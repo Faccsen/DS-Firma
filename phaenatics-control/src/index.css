@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    font-family: theme("fontFamily.sans");
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(61, 220, 132, 0.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(56, 189, 248, 0.05), transparent 60%),
+      #0b0f0d;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-panel border border-line rounded-2xl shadow-soft;
+  }
+  .card-2 {
+    @apply bg-panel2 border border-line rounded-xl;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-panel2 text-fg px-3 py-1.5 text-sm hover:bg-line transition-colors;
+  }
+  .btn-primary {
+    @apply bg-leaf text-bg border-leaf hover:bg-leaf-600 hover:border-leaf-600;
+  }
+  .btn-ghost {
+    @apply bg-transparent border-transparent text-muted hover:text-fg hover:bg-panel2;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-line bg-panel2 text-muted;
+  }
+  .pill-on {
+    @apply text-leaf border-leaf/30 bg-leaf/10;
+  }
+  .stat-label {
+    @apply text-[11px] uppercase tracking-wider text-muted;
+  }
+  .stat-value {
+    @apply text-2xl font-semibold text-fg tabular-nums;
+  }
+  .stat-unit {
+    @apply text-sm text-muted ml-1;
+  }
+  .divider {
+    @apply h-px bg-line w-full;
+  }
+}
+
+/* Recharts dark tweaks */
+.recharts-cartesian-axis-tick text {
+  fill: #7a8a82;
+  font-size: 11px;
+}
+.recharts-cartesian-grid line {
+  stroke: #1f2823;
+}
+.recharts-tooltip-wrapper:focus {
+  outline: none;
+}
