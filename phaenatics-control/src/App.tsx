@@ -8,6 +8,7 @@ import { HistoryView } from "./components/HistoryView";
 import { SettingsView } from "./components/SettingsView";
 import { MobileNav } from "./components/MobileNav";
 import { BackgroundSeal } from "./components/BackgroundSeal";
+import { InstallPrompt } from "./components/InstallPrompt";
 import { useStore } from "./lib/store";
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
         </div>
       </main>
       <MobileNav view={view} onView={setView} />
+      <InstallPrompt />
     </div>
   );
 }

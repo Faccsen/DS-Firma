@@ -35,6 +35,48 @@ npm run dev      # http://localhost:5173
 npm run build    # produktiver Build nach dist/
 ```
 
+## Deploy auf Vercel (empfohlen)
+
+Die App ist eine installierbare PWA — der Verein kriegt eine echte URL,
+jedes Mitglied kann sie auf dem Handy installieren.
+
+**Einmaliges Setup** (ca. 3 Minuten):
+
+1. [vercel.com](https://vercel.com) → *Sign Up* mit GitHub
+2. *Add New…* → *Project* → Repository `Faccsen/DS-Firma` importieren
+3. Beim Konfigurieren:
+   - **Root Directory**: `phaenatics-control`
+   - Framework: `Vite` (wird automatisch erkannt)
+   - Build Command: `npm run build` (default)
+   - Output Directory: `dist` (default)
+4. *Deploy*
+
+Nach ~1 Minute hast du eine URL wie `phaenatics.vercel.app`. Jeder Push
+auf `main` deployt automatisch neu. Für eigene Domain (`control.phaenatics.de`)
+im Dashboard unter *Settings → Domains* hinterlegen.
+
+Alternativ per CLI, lokal aus `phaenatics-control/`:
+
+```bash
+npx vercel        # Login + initial deploy
+npx vercel --prod # production deploy
+```
+
+## Auf dem Handy installieren
+
+Nach dem Vercel-Deploy:
+
+- **Android (Chrome)**: URL öffnen → Chrome zeigt automatisch den
+  Install-Prompt der App ("Installieren"-Button rechts unten).
+  Falls nicht: Menü → *App installieren* / *Zum Startbildschirm hinzufügen*.
+- **iOS (Safari)**: URL öffnen → Share-Button (⬆) → *Zum Home-Bildschirm*.
+  (iOS zeigt keinen automatischen Prompt — das ist die einzige Variante.)
+- **Desktop (Chrome/Edge)**: In der Adressleiste erscheint ein
+  Install-Icon rechts.
+
+Die PWA läuft dann als eigenständige App (eigener App-Switcher-Eintrag,
+Fullscreen, Offline-Cache, eigenes Icon mit Phaenatics-Siegel).
+
 ## Struktur
 
 ```
