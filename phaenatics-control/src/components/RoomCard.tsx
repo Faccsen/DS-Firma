@@ -1,6 +1,6 @@
-import { Thermometer, Droplets, Wind, Sparkles, ChevronRight } from "lucide-react";
+import { Thermometer, Droplets, Wind, Sparkles, ChevronRight, Droplet } from "lucide-react";
 import type { GrowRoom } from "../lib/types";
-import { stageLabel, stageColor } from "../lib/labels";
+import { stageLabel, stageColor, kindLabel, kindColor } from "../lib/labels";
 
 export function RoomCard({ room, onOpen }: { room: GrowRoom; onOpen: () => void }) {
   const onDevices = room.devices.filter((d) => d.on).length;
@@ -10,19 +10,22 @@ export function RoomCard({ room, onOpen }: { room: GrowRoom; onOpen: () => void 
       className="card p-5 text-left hover:border-leaf/30 transition-colors group"
     >
       <div className="flex items-start justify-between">
-        <div>
-          <div className="text-base font-semibold">{room.name}</div>
-          <div className="flex items-center gap-2 mt-1">
-            <span
-              className={`pill ${stageColor(room.stage)}`}
-              title="Wachstumsphase"
-            >
+        <div className="min-w-0">
+          <div className="text-base font-semibold truncate">{room.name}</div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className={`pill ${stageColor(room.stage)}`} title="Wachstumsphase">
               {stageLabel(room.stage)}
             </span>
+            {room.kind !== "standard" && (
+              <span className={`pill ${kindColor(room.kind)}`} title="Raumtyp">
+                {room.kind === "cropsteering" && <Droplet className="size-3" />}
+                {kindLabel(room.kind)}
+              </span>
+            )}
             <span className="text-[11px] text-muted">Tag {room.day}</span>
           </div>
         </div>
-        <ChevronRight className="size-4 text-muted group-hover:text-leaf transition-colors" />
+        <ChevronRight className="size-4 text-muted group-hover:text-cream transition-colors shrink-0 ml-2" />
       </div>
 
       <div className="grid grid-cols-4 gap-3 mt-5">

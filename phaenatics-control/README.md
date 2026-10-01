@@ -1,22 +1,31 @@
 # Phaenatics Control
 
-Smart Grow Controller App im Stil von AC Infinity UIS — Dashboard, Gerätesteuerung,
-Automationen und Sensor-Verlauf für Indoor-Grow-Räume.
+Grow-Controller-App des Phaenatics e.V. — Professioneller Cannabis Social
+Club in Lüneburg. Mehrere Räume (Bloom, Veg, Pheno Hunt, Crop Steering,
+Dry), Live-Klima, Gerätesteuerung, Automation und Bewässerungs-Steering.
 
 ![stack](https://img.shields.io/badge/vite-5-blue) ![stack](https://img.shields.io/badge/react-18-149eca) ![stack](https://img.shields.io/badge/typescript-5-3178c6) ![stack](https://img.shields.io/badge/tailwind-3-38bdf8)
 
 ## Features
 
-- **Mehrere Grow-Räume** mit eigenen Phasen (Keimling, Wachstum, Blüte, Trocknung)
-- **Live-Sensorik** für Temperatur, Luftfeuchte, VPD (Tetens-Berechnung mit Blatt-Offset) und CO₂
-- **Gerätesteuerung** für Zuluft, Abluft, Lüfter, LED-Licht, Be-/Entfeuchter, AC, Heizung, CO₂
+- **Beliebig viele Räume** anlegen und löschen (persistent im localStorage) —
+  Standard-Räume, Pheno-Hunt und Crop-Steering-Räume
+- **Live-Sensorik** für Temperatur, Luftfeuchte, VPD (Tetens mit Blatt-Offset) und CO₂
+- **Gerätesteuerung** für Zuluft, Abluft, Lüfter, LED-Licht, Be-/Entfeuchter,
+  AC, Heizung, CO₂, Dosierpumpen und Nährstoff-Doser
 - **Modi pro Gerät**: Auto, Manuell, Zeitplan, Aus
-- **Zielbereiche** pro Sensor mit visuellem In-Range-Indikator und Farb-Status
-- **Automationen** (Wenn-Dann): z. B. *„Wenn Temp > 27 °C → Abluft boosten"*
+- **Zielbereiche** pro Sensor mit visuellem In-Range-Indikator
+- **Automationen** (Wenn-Dann): auch für VWC / EC / pH
 - **24h-Verlauf** mit interaktiven Charts (Recharts)
 - **VPD-Gauge** mit phasenspezifischem Sweet Spot
+- **Crop Steering** (Rockwool / Coco):
+  - VWC, EC & pH für Substrat und Feed getrennt, Substrat-Temperatur
+  - Phasen P0–P3 (Nacht-Dryback / Ramp Up / Maintenance / End of Day)
+  - Dryback-Metrik und FC-Referenz im Chart
+  - Strategie-Presets Vegetativ / Transition / Generativ
+  - Einstellbare Shot-Größen, Intervalle, Lichtzyklus
 - **Responsive UI**: Desktop-Sidebar + Mobile-Bottom-Nav
-- **Sim Mode**: realistischer Klima-Drift basierend auf aktiven Geräten
+- **PWA**: installierbar auf iOS/Android/Desktop, offline-fähig
 
 ## Stack
 

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Phaenatics Control — Smart Grow Controller App (AC Infinity-style)",
+  "description": "Phaenatics Control — Smart Grow Controller App des Phaenatics e.V. Lüneburg",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

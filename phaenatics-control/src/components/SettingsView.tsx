@@ -91,8 +91,9 @@ export function SettingsView() {
       <div className="card p-5 text-[12px] text-muted leading-relaxed">
         <span className="display text-cream text-base">Phaenatics Control</span> ist die
         Grow-Controller-App des Phaenatics e.V. — Professioneller Cannabis Social Club
-        in Lüneburg. Design und Werte im Vereins-Stil, Steuerung inspiriert von AC Infinity
-        UIS. Sensorwerte werden hier lokal simuliert — keine Daten verlassen dein Gerät.
+        in Lüneburg. Live-Klima, Gerätesteuerung, Automationen und Crop Steering für
+        alle Räume des Vereins. Sensorwerte werden hier lokal simuliert — keine Daten
+        verlassen dein Gerät.
       </div>
     </div>
   );
