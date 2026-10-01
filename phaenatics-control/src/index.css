@@ -12,11 +12,10 @@
     font-family: theme("fontFamily.sans");
     -webkit-font-smoothing: antialiased;
     color: #f2e8d0;
-    background-color: #143526;
+    background-color: #000000;
     background-image:
-      radial-gradient(1100px 700px at 85% -10%, rgba(141, 212, 168, 0.08), transparent 60%),
-      radial-gradient(900px 600px at -10% 110%, rgba(242, 232, 208, 0.04), transparent 60%),
-      linear-gradient(180deg, #163d2e 0%, #0f2b1f 100%);
+      radial-gradient(1100px 700px at 85% -10%, rgba(141, 212, 168, 0.05), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(242, 232, 208, 0.025), transparent 60%);
     background-attachment: fixed;
   }
   /* Ensure interactive content sits above the fixed watermark layer */

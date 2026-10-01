@@ -21,7 +21,7 @@ export function BackgroundSeal() {
         className="fixed inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(60vmax 50vmax at 50% 50%, transparent 0%, rgba(14,37,27,0.55) 70%, rgba(14,37,27,0.9) 100%)",
+            "radial-gradient(60vmax 50vmax at 50% 50%, transparent 0%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0.95) 100%)",
           zIndex: 0,
         }}
       />

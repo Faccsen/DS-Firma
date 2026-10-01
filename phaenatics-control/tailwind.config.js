@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Phaenatics brand
-        bg: "#143526", // deep forest
-        panel: "#1a4535",
-        panel2: "#163d2e",
-        line: "#2a5a47",
+        // Phaenatics brand — black base, cream type, forest accents
+        bg: "#000000",
+        panel: "#0f1613",
+        panel2: "#131a16",
+        line: "#243029",
         fg: "#f2e8d0", // cream
-        muted: "#9bb0a3",
+        muted: "#8a9a90",
         cream: {
           DEFAULT: "#f2e8d0",
           600: "#d9ce9f",
