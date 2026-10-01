@@ -1,7 +1,7 @@
 /**
  * Vapor Pressure Deficit (kPa) — Tetens-based saturation vapor pressure.
- * Leaf temperature is approximated as airTempC - 1.5 to mirror what most
- * grow controllers (incl. AC Infinity) show on their dashboards.
+ * Leaf temperature is approximated as airTempC - 1.5, the common offset
+ * most grow controllers use on their dashboards.
  */
 export function vpd(airTempC: number, humidityPct: number, leafOffsetC = 1.5): number {
   const leafC = airTempC - leafOffsetC;

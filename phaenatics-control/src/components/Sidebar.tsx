@@ -1,6 +1,17 @@
-import { LayoutDashboard, Cpu, Bell, BarChart3, Settings, Activity } from "lucide-react";
+import { useState } from "react";
+import {
+  LayoutDashboard,
+  Cpu,
+  Bell,
+  BarChart3,
+  Settings,
+  Activity,
+  Plus,
+  Droplet,
+} from "lucide-react";
 import { useStore } from "../lib/store";
 import { PhaenaticsSeal } from "./Brand";
+import { AddRoomModal } from "./AddRoomModal";
 
 type View = "dashboard" | "room" | "automation" | "history" | "settings";
 
@@ -13,6 +24,7 @@ export function Sidebar({ view, onView }: Props) {
   const rooms = useStore((s) => s.rooms);
   const activeRoomId = useStore((s) => s.activeRoomId);
   const selectRoom = useStore((s) => s.selectRoom);
+  const [addOpen, setAddOpen] = useState(false);
 
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -23,7 +35,7 @@ export function Sidebar({ view, onView }: Props) {
   ] as const;
 
   return (
-    <aside className="hidden md:flex flex-col w-72 shrink-0 border-r border-line bg-panel/60 backdrop-blur">
+    <aside className="hidden md:flex flex-col w-72 shrink-0 border-r border-line bg-panel/60 backdrop-blur h-screen sticky top-0">
       <div className="px-5 pt-6 pb-5 flex items-center gap-3">
         <PhaenaticsSeal size={44} />
         <div className="min-w-0">
@@ -36,7 +48,7 @@ export function Sidebar({ view, onView }: Props) {
 
       <div className="mx-5 h-px bg-line" />
 
-      <nav className="px-3 mt-4 space-y-1">
+      <nav className="px-3 mt-4 space-y-1 shrink-0">
         {nav.map((n) => {
           const Icon = n.icon;
           const active = view === n.id;
@@ -57,8 +69,19 @@ export function Sidebar({ view, onView }: Props) {
         })}
       </nav>
 
-      <div className="mt-6 px-5 stat-label">Räume</div>
-      <div className="px-3 mt-2 space-y-1">
+      <div className="mt-6 px-5 flex items-center justify-between shrink-0">
+        <span className="stat-label">Räume ({rooms.length})</span>
+        <button
+          onClick={() => setAddOpen(true)}
+          className="size-6 grid place-items-center rounded-md border border-line text-muted hover:text-cream hover:border-cream/30"
+          aria-label="Raum hinzufügen"
+          title="Raum hinzufügen"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
+
+      <div className="px-3 mt-2 space-y-1 overflow-y-auto flex-1 pb-3">
         {rooms.map((r) => (
           <button
             key={r.id}
@@ -72,9 +95,14 @@ export function Sidebar({ view, onView }: Props) {
                 : "text-muted hover:text-cream hover:bg-panel2/50"
             }`}
           >
-            <span className="truncate">{r.name}</span>
+            <span className="truncate flex items-center gap-2">
+              {r.kind === "cropsteering" && (
+                <Droplet className="size-3 text-cream shrink-0" />
+              )}
+              {r.name}
+            </span>
             <span
-              className={`size-2 rounded-full ${
+              className={`size-2 rounded-full shrink-0 ${
                 r.lightOn
                   ? "bg-leaf shadow-[0_0_8px_0_rgba(141,212,168,0.7)]"
                   : "bg-muted/50"
@@ -84,10 +112,12 @@ export function Sidebar({ view, onView }: Props) {
         ))}
       </div>
 
-      <div className="mt-auto px-5 py-4 text-[11px] text-muted flex items-center gap-2 border-t border-line">
+      <div className="px-5 py-4 text-[11px] text-muted flex items-center gap-2 border-t border-line shrink-0">
         <Activity className="size-3.5" />
         Live · Sim Mode
       </div>
+
+      <AddRoomModal open={addOpen} onClose={() => setAddOpen(false)} />
     </aside>
   );
 }

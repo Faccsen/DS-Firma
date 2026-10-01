@@ -1,5 +1,7 @@
 export type GrowStage = "seedling" | "vegetative" | "flowering" | "drying";
 
+export type RoomKind = "standard" | "phenohunt" | "cropsteering";
+
 export type DeviceType =
   | "fan"
   | "intake"
@@ -9,7 +11,9 @@ export type DeviceType =
   | "dehumidifier"
   | "heater"
   | "ac"
-  | "co2";
+  | "co2"
+  | "pump"
+  | "doser";
 
 export type DeviceMode = "manual" | "auto" | "schedule" | "off";
 
@@ -19,10 +23,8 @@ export interface Device {
   name: string;
   port: number;
   on: boolean;
-  /** 0–10 for fans, 0–100 for lights / others. */
   level: number;
   mode: DeviceMode;
-  /** Optional schedule window in 24h format e.g. "06:00". */
   scheduleOn?: string;
   scheduleOff?: string;
 }
@@ -34,7 +36,7 @@ export interface Targets {
 }
 
 export interface HistoryPoint {
-  t: number; // unix ms
+  t: number;
   temp: number;
   humidity: number;
   vpd: number;
@@ -44,20 +46,62 @@ export interface HistoryPoint {
 export interface AutomationRule {
   id: string;
   enabled: boolean;
-  /** human readable label */
   label: string;
-  /** sensor to watch */
-  when: "temp" | "humidity" | "vpd" | "co2";
+  when: "temp" | "humidity" | "vpd" | "co2" | "vwc" | "ec" | "ph";
   op: ">" | "<";
   value: number;
-  /** device to toggle */
   deviceId: string;
   action: "on" | "off" | "boost";
+}
+
+export type IrrigationPhase = "P0" | "P1" | "P2" | "P3";
+export type SteeringStrategy = "vegetative" | "generative" | "transition";
+
+export interface IrrigationEvent {
+  t: number;
+  vwc: number;
+  ec: number;
+  irrigated: boolean;
+  shotSizePct: number;
+}
+
+export interface CropSteering {
+  strategy: SteeringStrategy;
+  phase: IrrigationPhase;
+
+  // substrate sensors
+  vwc: number; // %
+  ecSubstrate: number; // mS/cm
+  phSubstrate: number;
+  substrateTemp: number; // °C
+
+  // input (feed) sensors
+  ecFeed: number;
+  phFeed: number;
+
+  // state
+  fieldCapacity: number; // VWC % target
+  drybackPct: number; // % below field capacity right now
+  runoffPct: number; // last cycle
+
+  // schedule (minutes offsets from lights-on)
+  lightsOn: string; // "HH:MM"
+  lightsOff: string; // "HH:MM"
+  p1StartMin: number; // usually 60–120 min after lights-on
+  p1DurationMin: number; // 60–120 min
+  p1ShotPct: number; // 2–6%
+  p2ShotPct: number; // 1–3%
+  p2IntervalMin: number; // 30–120 min
+  p3StartMinBeforeOff: number; // 60–120 min before lights-off
+  drybackTargetPct: number; // overnight target dryback %
+
+  irrigationHistory: IrrigationEvent[];
 }
 
 export interface GrowRoom {
   id: string;
   name: string;
+  kind: RoomKind;
   stage: GrowStage;
   day: number;
   temp: number;
@@ -69,4 +113,5 @@ export interface GrowRoom {
   devices: Device[];
   rules: AutomationRule[];
   history: HistoryPoint[];
+  cropSteering?: CropSteering;
 }

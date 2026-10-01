@@ -7,6 +7,8 @@ import {
   Wind,
   Sparkles,
   Power,
+  Droplet,
+  FlaskConical,
 } from "lucide-react";
 import type { Device, DeviceMode } from "../lib/types";
 import { useStore } from "../lib/store";
@@ -21,6 +23,8 @@ const ICON: Record<Device["type"], typeof Fan> = {
   heater: Flame,
   ac: Snowflake,
   co2: Sparkles,
+  pump: Droplet,
+  doser: FlaskConical,
 };
 
 const LEVEL_MAX: Record<Device["type"], number> = {
@@ -33,6 +37,8 @@ const LEVEL_MAX: Record<Device["type"], number> = {
   heater: 100,
   ac: 30,
   co2: 100,
+  pump: 100,
+  doser: 100,
 };
 
 const LEVEL_UNIT: Record<Device["type"], string> = {
@@ -45,6 +51,8 @@ const LEVEL_UNIT: Record<Device["type"], string> = {
   heater: "%",
   ac: "°C",
   co2: "%",
+  pump: "%",
+  doser: "%",
 };
 
 export function DeviceControl({ roomId, device }: { roomId: string; device: Device }) {
@@ -150,6 +158,8 @@ function labelType(t: Device["type"]) {
       heater: "Heizung",
       ac: "Klima",
       co2: "CO₂",
+      pump: "Dosierpumpe",
+      doser: "Nährstoff-Doser",
     } as const
   )[t];
 }

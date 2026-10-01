@@ -91,6 +91,13 @@ export function AutomationRules({ room }: { room: GrowRoom }) {
           <option value="humidity">rF</option>
           <option value="vpd">VPD</option>
           <option value="co2">CO₂</option>
+          {room.cropSteering && (
+            <>
+              <option value="vwc">VWC</option>
+              <option value="ec">EC</option>
+              <option value="ph">pH</option>
+            </>
+          )}
         </select>
         <select
           className="card-2 px-2 py-2 text-sm"
@@ -148,7 +155,17 @@ export function AutomationRules({ room }: { room: GrowRoom }) {
 }
 
 function labelMetric(m: AutomationRule["when"]) {
-  return ({ temp: "Temperatur", humidity: "rF", vpd: "VPD", co2: "CO₂" } as const)[m];
+  return (
+    {
+      temp: "Temperatur",
+      humidity: "rF",
+      vpd: "VPD",
+      co2: "CO₂",
+      vwc: "VWC",
+      ec: "EC",
+      ph: "pH",
+    } as const
+  )[m];
 }
 
 function labelAction(a: AutomationRule["action"]) {
@@ -156,5 +173,15 @@ function labelAction(a: AutomationRule["action"]) {
 }
 
 function unitFor(w: AutomationRule["when"]) {
-  return w === "temp" ? "°C" : w === "humidity" ? "%" : w === "vpd" ? "kPa" : "ppm";
+  return (
+    {
+      temp: "°C",
+      humidity: "%",
+      vpd: "kPa",
+      co2: "ppm",
+      vwc: "%",
+      ec: "mS/cm",
+      ph: "",
+    } as const
+  )[w];
 }
