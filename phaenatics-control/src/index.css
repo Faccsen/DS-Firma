@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    font-family: theme("fontFamily.sans");
+    -webkit-font-smoothing: antialiased;
+    color: #f2e8d0;
+    background-color: #000000;
+    background-image:
+      radial-gradient(1100px 700px at 85% -10%, rgba(141, 212, 168, 0.05), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(242, 232, 208, 0.025), transparent 60%);
+    background-attachment: fixed;
+  }
+  /* Ensure interactive content sits above the fixed watermark layer */
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-panel/80 border border-line rounded-2xl shadow-soft backdrop-blur-sm;
+  }
+  .card-2 {
+    @apply bg-panel2/70 border border-line rounded-xl backdrop-blur-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-panel2/70 text-fg px-3 py-1.5 text-sm hover:bg-line transition-colors;
+  }
+  .btn-primary {
+    @apply bg-cream text-forest-900 border-cream hover:bg-cream-600 hover:border-cream-600;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-line bg-panel2/70 text-muted;
+  }
+  .pill-on {
+    @apply text-leaf border-leaf/30 bg-leaf/10;
+  }
+  .stat-label {
+    @apply text-[11px] uppercase tracking-wider text-muted;
+  }
+  .stat-value {
+    @apply text-2xl font-semibold text-fg tabular-nums;
+  }
+  .stat-unit {
+    @apply text-sm text-muted ml-1;
+  }
+  .divider {
+    @apply h-px bg-line w-full;
+  }
+  .display {
+    font-family: theme("fontFamily.display");
+    font-optical-sizing: auto;
+    font-variation-settings: "SOFT" 100;
+    letter-spacing: -0.015em;
+  }
+}
+
+/* Recharts tweaks for Phaenatics palette */
+.recharts-cartesian-axis-tick text {
+  fill: #9bb0a3;
+  font-size: 11px;
+}
+.recharts-cartesian-grid line {
+  stroke: #2a5a47;
+}
+.recharts-tooltip-wrapper:focus {
+  outline: none;
+}
+
+/* Range input styling to match brand */
+input[type="range"] {
+  accent-color: #8dd4a8;
+}
