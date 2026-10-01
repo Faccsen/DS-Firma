@@ -7,6 +7,7 @@ import { AutomationView } from "./components/AutomationView";
 import { HistoryView } from "./components/HistoryView";
 import { SettingsView } from "./components/SettingsView";
 import { MobileNav } from "./components/MobileNav";
+import { BackgroundSeal } from "./components/BackgroundSeal";
 import { useStore } from "./lib/store";
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex">
+      <BackgroundSeal />
       <Sidebar view={view} onView={setView} />
       <main className="flex-1 min-w-0 flex flex-col pb-16 md:pb-0">
         <TopBar title={title} subtitle={subtitle} />

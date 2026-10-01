@@ -8,7 +8,7 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
   return (
     <header className="h-14 flex items-center justify-between px-4 md:px-6 border-b border-line bg-panel/40 backdrop-blur sticky top-0 z-10">
       <div className="min-w-0">
-        <div className="text-sm font-semibold truncate">{title}</div>
+        <div className="display text-lg leading-tight text-cream truncate">{title}</div>
         {subtitle && <div className="text-[11px] text-muted truncate">{subtitle}</div>}
       </div>
       <div className="flex items-center gap-2">

@@ -24,7 +24,7 @@ export function HistoryView() {
   return (
     <div className="px-4 md:px-6 py-6 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold">{room.name} · Verlauf</h2>
+        <h2 className="display text-2xl text-cream">{room.name} · Verlauf</h2>
         <p className="text-[12px] text-muted">Letzte 24 Stunden</p>
       </div>
 

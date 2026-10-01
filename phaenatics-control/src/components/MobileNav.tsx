@@ -21,7 +21,7 @@ export function MobileNav({ view, onView }: { view: View; onView: (v: View) => v
               <button
                 onClick={() => onView(it.id)}
                 className={`w-full py-3 flex flex-col items-center gap-1 text-[10px] transition-colors ${
-                  active ? "text-leaf" : "text-muted"
+                  active ? "text-cream" : "text-muted"
                 }`}
               >
                 <Icon className="size-5" />

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bluetooth, Wifi, Bell, Thermometer, Leaf } from "lucide-react";
+import { Bluetooth, Wifi, Bell, Thermometer } from "lucide-react";
+import { PhaenaticsSeal } from "./Brand";
 
 interface Toggle {
   key: string;
@@ -47,13 +48,13 @@ export function SettingsView() {
 
   return (
     <div className="px-4 md:px-6 py-6 max-w-3xl space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="size-12 rounded-2xl bg-leaf/15 grid place-items-center">
-          <Leaf className="size-6 text-leaf" />
-        </div>
+      <div className="flex items-center gap-4">
+        <PhaenaticsSeal size={64} />
         <div>
-          <h2 className="text-lg font-semibold">Phaenatics Control</h2>
-          <p className="text-[12px] text-muted">v0.1.0 · Sim Mode · 3 Räume verbunden</p>
+          <h2 className="display text-3xl text-cream leading-none">Phaenatics Control</h2>
+          <p className="text-[12px] text-muted mt-1.5">
+            v0.1.0 · Sim Mode · 3 Räume verbunden · Cannabis Social Club Lüneburg
+          </p>
         </div>
       </div>
 
@@ -88,8 +89,10 @@ export function SettingsView() {
       </div>
 
       <div className="card p-5 text-[12px] text-muted leading-relaxed">
-        Phaenatics Control ist eine Demo-App im Stil von AC Infinity UIS. Sensorwerte
-        werden lokal im Browser simuliert — keine Daten verlassen dein Gerät.
+        <span className="display text-cream text-base">Phaenatics Control</span> ist die
+        Grow-Controller-App des Phaenatics e.V. — Professioneller Cannabis Social Club
+        in Lüneburg. Design und Werte im Vereins-Stil, Steuerung inspiriert von AC Infinity
+        UIS. Sensorwerte werden hier lokal simuliert — keine Daten verlassen dein Gerät.
       </div>
     </div>
   );

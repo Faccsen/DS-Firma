@@ -15,7 +15,7 @@ export function RoomDetail() {
     <div className="px-4 md:px-6 py-6 space-y-6">
       <section className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">{room.name}</h2>
+          <h2 className="display text-2xl text-cream">{room.name}</h2>
           <div className="flex items-center gap-2 mt-1">
             <span className={`pill ${stageColor(room.stage)}`}>{stageLabel(room.stage)}</span>
             <span className="text-[11px] text-muted">Tag {room.day}</span>
@@ -67,7 +67,7 @@ export function RoomDetail() {
       </section>
 
       <section>
-        <h3 className="text-sm font-semibold mb-3">Geräte · UIS Ports</h3>
+        <h3 className="display text-xl text-cream mb-3">Geräte · UIS Ports</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {room.devices.map((d) => (
             <DeviceControl key={d.id} roomId={room.id} device={d} />

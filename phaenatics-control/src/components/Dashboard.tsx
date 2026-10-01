@@ -16,7 +16,7 @@ export function Dashboard({ onOpenRoom }: { onOpenRoom: () => void }) {
       <section>
         <div className="flex items-end justify-between mb-3">
           <div>
-            <h2 className="text-lg font-semibold">Räume</h2>
+            <h2 className="display text-2xl text-cream">Räume</h2>
             <p className="text-[12px] text-muted">{rooms.length} verbundene Grow-Räume</p>
           </div>
         </div>
@@ -37,7 +37,7 @@ export function Dashboard({ onOpenRoom }: { onOpenRoom: () => void }) {
       <section>
         <div className="flex items-end justify-between mb-3">
           <div>
-            <h2 className="text-lg font-semibold">{active.name}</h2>
+            <h2 className="display text-2xl text-cream">{active.name}</h2>
             <p className="text-[12px] text-muted">Live-Klima · {active.devices.filter((d) => d.on).length} Geräte aktiv</p>
           </div>
         </div>

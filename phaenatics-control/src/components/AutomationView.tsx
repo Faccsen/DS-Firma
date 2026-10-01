@@ -9,7 +9,7 @@ export function AutomationView() {
   return (
     <div className="px-4 md:px-6 py-6 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold">{room.name} · Automation</h2>
+        <h2 className="display text-2xl text-cream">{room.name} · Automation</h2>
         <p className="text-[12px] text-muted">
           Sensor-gesteuerte Regeln. Werden in jedem Live-Tick ausgewertet.
         </p>

@@ -1,5 +1,6 @@
-import { Leaf, LayoutDashboard, Cpu, Bell, BarChart3, Settings, Activity } from "lucide-react";
+import { LayoutDashboard, Cpu, Bell, BarChart3, Settings, Activity } from "lucide-react";
 import { useStore } from "../lib/store";
+import { PhaenaticsSeal } from "./Brand";
 
 type View = "dashboard" | "room" | "automation" | "history" | "settings";
 
@@ -22,18 +23,20 @@ export function Sidebar({ view, onView }: Props) {
   ] as const;
 
   return (
-    <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-line bg-panel/60 backdrop-blur">
-      <div className="px-5 py-5 flex items-center gap-2">
-        <div className="size-9 rounded-xl bg-leaf/15 grid place-items-center shadow-glow">
-          <Leaf className="size-5 text-leaf" />
-        </div>
-        <div>
-          <div className="text-sm font-semibold tracking-tight">Phaenatics</div>
-          <div className="text-[11px] text-muted -mt-0.5">Control</div>
+    <aside className="hidden md:flex flex-col w-72 shrink-0 border-r border-line bg-panel/60 backdrop-blur">
+      <div className="px-5 pt-6 pb-5 flex items-center gap-3">
+        <PhaenaticsSeal size={44} />
+        <div className="min-w-0">
+          <div className="display text-cream text-2xl leading-none">Phaenatics</div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-muted mt-1.5">
+            Control · Lüneburg
+          </div>
         </div>
       </div>
 
-      <nav className="px-3 mt-2 space-y-1">
+      <div className="mx-5 h-px bg-line" />
+
+      <nav className="px-3 mt-4 space-y-1">
         {nav.map((n) => {
           const Icon = n.icon;
           const active = view === n.id;
@@ -42,7 +45,9 @@ export function Sidebar({ view, onView }: Props) {
               key={n.id}
               onClick={() => onView(n.id)}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                active ? "bg-leaf/10 text-leaf" : "text-muted hover:text-fg hover:bg-panel2"
+                active
+                  ? "bg-cream/10 text-cream"
+                  : "text-muted hover:text-cream hover:bg-panel2/60"
               }`}
             >
               <Icon className="size-4" />
@@ -62,13 +67,17 @@ export function Sidebar({ view, onView }: Props) {
               if (view === "dashboard") onView("room");
             }}
             className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-              activeRoomId === r.id ? "bg-panel2 text-fg" : "text-muted hover:text-fg hover:bg-panel2"
+              activeRoomId === r.id
+                ? "bg-panel2/80 text-cream"
+                : "text-muted hover:text-cream hover:bg-panel2/50"
             }`}
           >
             <span className="truncate">{r.name}</span>
             <span
               className={`size-2 rounded-full ${
-                r.lightOn ? "bg-leaf shadow-[0_0_8px_0_rgba(61,220,132,0.6)]" : "bg-muted/50"
+                r.lightOn
+                  ? "bg-leaf shadow-[0_0_8px_0_rgba(141,212,168,0.7)]"
+                  : "bg-muted/50"
               }`}
             />
           </button>
