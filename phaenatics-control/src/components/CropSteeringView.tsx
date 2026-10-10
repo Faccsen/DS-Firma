@@ -20,6 +20,8 @@ import {
 import { SensorTile } from "./SensorTile";
 import { DeviceControl } from "./DeviceControl";
 import { IrrigationChart } from "./IrrigationChart";
+import { RoomJournal } from "./RoomJournal";
+import { RoomMetaEditor } from "./RoomMetaEditor";
 
 const PHASES: IrrigationPhase[] = ["P0", "P1", "P2", "P3"];
 const STRATEGIES: SteeringStrategy[] = ["vegetative", "transition", "generative"];
@@ -268,6 +270,11 @@ export function CropSteeringView({ room }: { room: GrowRoom }) {
             <DeviceControl key={d.id} roomId={room.id} device={d} />
           ))}
         </div>
+      </section>
+
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <RoomMetaEditor room={room} />
+        <RoomJournal room={room} />
       </section>
     </div>
   );

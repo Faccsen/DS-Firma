@@ -5,13 +5,16 @@ import type {
   GrowStage,
   HistoryPoint,
   IrrigationEvent,
+  LightScene,
   RoomKind,
   SteeringStrategy,
 } from "../lib/types";
 import { vpd, vpdBand } from "../lib/vpd";
+import { defaultLightConfig, SCENE_PRESETS } from "../lib/light";
 
 const HOURS = 24;
 const STEP_MS = 15 * 60 * 1000;
+const DAY_MS = 86_400_000;
 
 function buildHistory(baseTemp: number, baseHum: number): HistoryPoint[] {
   const out: HistoryPoint[] = [];
@@ -44,7 +47,7 @@ function buildIrrigationHistory(cs: {
   const out: IrrigationEvent[] = [];
   const now = Date.now();
   const start = now - HOURS * 60 * 60 * 1000;
-  const points = (HOURS * 60 * 60 * 1000) / (5 * 60 * 1000); // 5 min granularity
+  const points = (HOURS * 60 * 60 * 1000) / (5 * 60 * 1000);
   const lightsOnH = 7;
   const lightsOffH = 19;
 
@@ -64,7 +67,6 @@ function buildIrrigationHistory(cs: {
 
     if (lightsOnNow) {
       if (minuteOfLightDay >= cs.p1StartMin && minuteOfLightDay < cs.p1StartMin + 90) {
-        // P1 ramp: shots every 10–15 min
         if (Math.round(minuteOfLightDay) % 12 === 0) {
           irrigated = true;
           shot = cs.p1ShotPct;
@@ -73,7 +75,6 @@ function buildIrrigationHistory(cs: {
         minuteOfLightDay >= cs.p1StartMin + 90 &&
         minuteFromLightEnd > cs.p3StartMinBeforeOff
       ) {
-        // P2 maintenance
         if (Math.round(minuteOfLightDay) % Math.round(cs.p2IntervalMin) === 0) {
           irrigated = true;
           shot = cs.p2ShotPct;
@@ -131,22 +132,60 @@ function makeCropSteering(overrides: Partial<CropSteering> = {}): CropSteering {
   return merged;
 }
 
+function lightDevice(opts: {
+  name: string;
+  port: number;
+  scene: LightScene;
+  wattage: number;
+  level?: number;
+  scheduleOn?: string;
+}): Device {
+  const cfg = defaultLightConfig(opts.scene, opts.wattage);
+  const scheduleOn =
+    opts.scheduleOn ?? (cfg.photoperiod.onH === 12 ? "08:00" : "06:00");
+  const onH = cfg.photoperiod.onH;
+  const [h, m] = scheduleOn.split(":").map(Number);
+  const offMin = (h * 60 + m + onH * 60) % (24 * 60);
+  const scheduleOff = `${Math.floor(offMin / 60)
+    .toString()
+    .padStart(2, "0")}:${(offMin % 60).toString().padStart(2, "0")}`;
+  cfg.hoursRun = Math.round(100 + Math.random() * 2000);
+  return {
+    id: dId(),
+    type: "light",
+    name: opts.name,
+    port: opts.port,
+    on: opts.scene !== "dark",
+    level: opts.level ?? 90,
+    mode: "schedule",
+    scheduleOn,
+    scheduleOff,
+    lightConfig: cfg,
+  };
+}
+
 export function defaultDevices(stage: GrowStage): Device[] {
   const flower = stage === "flowering";
+  const seedling = stage === "seedling";
+  const scene: LightScene = seedling ? "seedling" : flower ? "flower" : "veg";
   return [
-    { id: dId(), type: "intake", name: "Intake Fan", port: 1, on: true, level: 4, mode: "auto" },
-    { id: dId(), type: "exhaust", name: "Exhaust Fan", port: 2, on: true, level: flower ? 7 : 5, mode: "auto" },
+    { id: dId(), type: "intake", name: "Zuluft", port: 1, on: true, level: 4, mode: "auto" },
     {
       id: dId(),
-      type: "light",
+      type: "exhaust",
+      name: "Abluft",
+      port: 2,
+      on: true,
+      level: flower ? 7 : 5,
+      mode: "auto",
+    },
+    lightDevice({
       name: flower ? "LED Panel 480W" : "LED Bar 240W",
       port: 3,
-      on: true,
+      scene,
+      wattage: flower ? 480 : 240,
       level: flower ? 92 : 75,
-      mode: "schedule",
-      scheduleOn: flower ? "08:00" : "06:00",
-      scheduleOff: flower ? "20:00" : "00:00",
-    },
+    }),
     {
       id: dId(),
       type: flower ? "dehumidifier" : "humidifier",
@@ -156,7 +195,7 @@ export function defaultDevices(stage: GrowStage): Device[] {
       level: flower ? 40 : 50,
       mode: "auto",
     },
-    { id: dId(), type: "fan", name: "Oscillating Fan", port: 5, on: true, level: 3, mode: "manual" },
+    { id: dId(), type: "fan", name: "Clip-Lüfter", port: 5, on: true, level: 3, mode: "manual" },
   ];
 }
 
@@ -165,8 +204,15 @@ export function defaultCropSteeringDevices(): Device[] {
     { id: dId(), type: "pump", name: "Dosing Pump A", port: 1, on: true, level: 60, mode: "auto" },
     { id: dId(), type: "pump", name: "Dosing Pump B", port: 2, on: true, level: 60, mode: "auto" },
     { id: dId(), type: "doser", name: "pH Down Doser", port: 3, on: true, level: 20, mode: "auto" },
-    { id: dId(), type: "light", name: "LED Panel 600W", port: 4, on: true, level: 95, mode: "schedule", scheduleOn: "07:00", scheduleOff: "19:00" },
-    { id: dId(), type: "exhaust", name: "Exhaust Fan", port: 5, on: true, level: 6, mode: "auto" },
+    lightDevice({
+      name: "LED Panel 600W",
+      port: 4,
+      scene: "flower",
+      wattage: 600,
+      level: 95,
+      scheduleOn: "07:00",
+    }),
+    { id: dId(), type: "exhaust", name: "Abluft", port: 5, on: true, level: 6, mode: "auto" },
     { id: dId(), type: "dehumidifier", name: "Dehumidifier", port: 6, on: true, level: 45, mode: "auto" },
     { id: dId(), type: "ac", name: "Mini Split AC", port: 7, on: true, level: 23, mode: "auto" },
   ];
@@ -180,8 +226,9 @@ export function createRoom(opts: {
   name: string;
   kind: RoomKind;
   stage: GrowStage;
+  harvestInDays?: number;
 }): GrowRoom {
-  const { name, kind, stage } = opts;
+  const { name, kind, stage, harvestInDays } = opts;
   const flower = stage === "flowering";
   const seedling = stage === "seedling";
   const baseTemp = flower ? 25.5 : seedling ? 23 : 24;
@@ -206,6 +253,8 @@ export function createRoom(opts: {
     devices: kind === "cropsteering" ? defaultCropSteeringDevices() : defaultDevices(stage),
     rules: [],
     history: buildHistory(baseTemp, baseHum),
+    journal: [],
+    harvestInDays: harvestInDays ?? (flower ? 63 : stage === "drying" ? 14 : undefined),
   };
 
   if (kind === "cropsteering") {
@@ -214,24 +263,36 @@ export function createRoom(opts: {
   return room;
 }
 
-function flowerRoom(name: string, day: number, kind: "standard" | "phenohunt" = "standard"): GrowRoom {
+function flowerRoom(
+  name: string,
+  day: number,
+  kind: "standard" | "phenohunt" = "standard",
+): GrowRoom {
   const r = createRoom({ name, kind, stage: "flowering" });
   r.day = day;
+  r.plantedAt = Date.now() - (day - 1) * DAY_MS;
   return r;
 }
 
 export const seedRooms: GrowRoom[] = [
   {
-    ...createRoom({ name: "Veg Tent · 80×80", kind: "standard", stage: "vegetative" }),
+    ...createRoom({ name: "Veg Tent · 120×120", kind: "standard", stage: "vegetative" }),
     day: 18,
+    plantedAt: Date.now() - 17 * DAY_MS,
   },
-  flowerRoom("Bloom 1 · 120×120", 42),
-  flowerRoom("Bloom 2 · 120×120", 28),
-  flowerRoom("Bloom 3 · 120×120", 14),
-  flowerRoom("Pheno Hunt · 100×100", 35, "phenohunt"),
+  flowerRoom("Bloom 1 · 120×120", 56),
+  flowerRoom("Bloom 2 · 120×120", 49),
+  flowerRoom("Bloom 3 · 120×120", 42),
+  flowerRoom("Bloom 4 · 120×120", 35),
+  flowerRoom("Bloom 5 · 120×120", 28),
+  flowerRoom("Bloom 6 · 120×120", 21),
+  flowerRoom("Bloom 7 · 120×120", 14),
+  flowerRoom("Bloom 8 · 120×120", 7),
+  flowerRoom("Pheno Hunt · 100×100", 32, "phenohunt"),
   {
     ...createRoom({ name: "Crop Steering · Rockwool", kind: "cropsteering", stage: "flowering" }),
     day: 24,
+    plantedAt: Date.now() - 23 * DAY_MS,
   },
   {
     ...createRoom({ name: "Dry Room", kind: "standard", stage: "drying" }),
@@ -276,3 +337,6 @@ export function strategyPreset(s: SteeringStrategy): Partial<CropSteering> {
     drybackTargetPct: 15,
   };
 }
+
+// prevents unused-import lint when SCENE_PRESETS not referenced here directly
+void SCENE_PRESETS;

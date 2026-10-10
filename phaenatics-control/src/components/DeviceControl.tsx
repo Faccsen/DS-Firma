@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Fan,
   Lightbulb,
@@ -9,9 +10,12 @@ import {
   Power,
   Droplet,
   FlaskConical,
+  Settings2,
 } from "lucide-react";
 import type { Device, DeviceMode } from "../lib/types";
 import { useStore } from "../lib/store";
+import { LightControlModal } from "./LightControlModal";
+import { effectiveLightPct, instantPPFD, instantWatts, sceneLabel } from "../lib/light";
 
 const ICON: Record<Device["type"], typeof Fan> = {
   fan: Fan,
@@ -59,11 +63,13 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
   const toggle = useStore((s) => s.toggleDevice);
   const setLevel = useStore((s) => s.setDeviceLevel);
   const setMode = useStore((s) => s.setDeviceMode);
+  const [modal, setModal] = useState(false);
 
   const Icon = ICON[device.type];
   const max = LEVEL_MAX[device.type];
   const unit = LEVEL_UNIT[device.type];
   const modes: DeviceMode[] = ["auto", "manual", "schedule", "off"];
+  const isLight = device.type === "light" && !!device.lightConfig;
 
   return (
     <div className="card p-4 flex flex-col gap-3">
@@ -82,20 +88,33 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
             <div className="text-sm font-medium">{device.name}</div>
             <div className="text-[11px] text-muted">
               Port {device.port} · {labelType(device.type)}
+              {isLight && device.lightConfig && ` · ${sceneLabel(device.lightConfig.scene)}`}
             </div>
           </div>
         </div>
-        <button
-          onClick={() => toggle(roomId, device.id)}
-          className={`size-10 rounded-xl grid place-items-center border transition-colors ${
-            device.on
-              ? "bg-leaf text-bg border-leaf hover:bg-leaf-600"
-              : "bg-panel2 text-muted border-line hover:text-fg"
-          }`}
-          aria-label={device.on ? "Ausschalten" : "Einschalten"}
-        >
-          <Power className="size-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {isLight && (
+            <button
+              onClick={() => setModal(true)}
+              className="size-10 rounded-xl grid place-items-center border bg-panel2 text-cream border-line hover:border-cream/30"
+              aria-label="Lampe konfigurieren"
+              title="Lampe konfigurieren"
+            >
+              <Settings2 className="size-4" />
+            </button>
+          )}
+          <button
+            onClick={() => toggle(roomId, device.id)}
+            className={`size-10 rounded-xl grid place-items-center border transition-colors ${
+              device.on
+                ? "bg-leaf text-bg border-leaf hover:bg-leaf-600"
+                : "bg-panel2 text-muted border-line hover:text-fg"
+            }`}
+            aria-label={device.on ? "Ausschalten" : "Einschalten"}
+          >
+            <Power className="size-4" />
+          </button>
+        </div>
       </div>
 
       <div>
@@ -110,7 +129,7 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
           type="range"
           min={device.type === "ac" ? 16 : 0}
           max={max}
-          step={max > 10 ? 1 : 1}
+          step={1}
           value={device.level}
           onChange={(e) => setLevel(roomId, device.id, Number(e.target.value))}
           className="w-full accent-leaf"
@@ -118,7 +137,15 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
         />
       </div>
 
-      <div className="flex items-center gap-1">
+      {isLight && device.lightConfig && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <MiniStat label="Jetzt" value={`${effectiveLightPct(device).toFixed(0)}%`} />
+          <MiniStat label="PPFD" value={`${instantPPFD(device)}`} />
+          <MiniStat label="Watt" value={`${instantWatts(device)} W`} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-1 flex-wrap">
         {modes.map((m) => (
           <button
             key={m}
@@ -142,6 +169,19 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
           </span>
         </div>
       )}
+
+      {modal && isLight && (
+        <LightControlModal roomId={roomId} device={device} onClose={() => setModal(false)} />
+      )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="card-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="text-xs font-semibold text-fg tabular-nums">{value}</div>
     </div>
   );
 }

@@ -1,24 +1,53 @@
 import { create } from "zustand";
-import type { AutomationRule, CropSteering, Device, GrowRoom, GrowStage, RoomKind, SteeringStrategy } from "./types";
+import type {
+  Alert,
+  AutomationRule,
+  CropSteering,
+  Device,
+  GrowRoom,
+  GrowStage,
+  JournalEntry,
+  JournalTag,
+  LightConfig,
+  LightScene,
+  RoomKind,
+  SteeringStrategy,
+} from "./types";
 import { vpd } from "./vpd";
 import { createRoom, seedRooms, strategyPreset } from "../data/seed";
+import { SCENE_PRESETS } from "./light";
+import { reconcileAlerts } from "./alerts";
 
 interface State {
   rooms: GrowRoom[];
+  alerts: Alert[];
   activeRoomId: string;
   tickEnabled: boolean;
 
   selectRoom: (id: string) => void;
   setTick: (on: boolean) => void;
 
-  addRoom: (opts: { name: string; kind: RoomKind; stage: GrowStage }) => string;
+  addRoom: (opts: {
+    name: string;
+    kind: RoomKind;
+    stage: GrowStage;
+    harvestInDays?: number;
+  }) => string;
   renameRoom: (id: string, name: string) => void;
   deleteRoom: (id: string) => void;
   duplicateRoom: (id: string) => void;
+  setRoomMeta: (id: string, patch: Partial<Pick<GrowRoom, "stage" | "day" | "plantedAt" | "harvestInDays">>) => void;
 
   toggleDevice: (roomId: string, deviceId: string) => void;
   setDeviceLevel: (roomId: string, deviceId: string, level: number) => void;
   setDeviceMode: (roomId: string, deviceId: string, mode: Device["mode"]) => void;
+  setDeviceSchedule: (
+    roomId: string,
+    deviceId: string,
+    patch: { scheduleOn?: string; scheduleOff?: string },
+  ) => void;
+  updateLightConfig: (roomId: string, deviceId: string, patch: Partial<LightConfig>) => void;
+  applyLightScene: (roomId: string, deviceId: string, scene: LightScene) => void;
 
   setTarget: (
     roomId: string,
@@ -34,12 +63,20 @@ interface State {
   updateSteering: (roomId: string, patch: Partial<CropSteering>) => void;
   triggerShot: (roomId: string) => void;
 
+  addJournal: (roomId: string, tag: JournalTag, text: string) => void;
+  deleteJournal: (roomId: string, entryId: string) => void;
+
+  acknowledgeAlert: (id: string) => void;
+  clearResolvedAlerts: () => void;
+
   tick: () => void;
 }
 
-const STORAGE_KEY = "phaenatics-rooms-v2";
+const STORAGE_KEY = "phaenatics-rooms-v3";
+const ALERTS_KEY = "phaenatics-alerts-v1";
 const HISTORY_CAP = 24 * 4 + 4;
-const IRRIG_HISTORY_CAP = 24 * 12 + 2; // 24h @ 5min
+const IRRIG_HISTORY_CAP = 24 * 12 + 2;
+const DAY_MS = 86_400_000;
 
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -51,17 +88,34 @@ function loadRooms(): GrowRoom[] | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as GrowRoom[];
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    return parsed;
+    // migrate: ensure journal exists
+    return parsed.map((r) => ({ ...r, journal: r.journal ?? [] }));
   } catch {
     return null;
   }
 }
-
+function loadAlerts(): Alert[] {
+  try {
+    const raw = localStorage.getItem(ALERTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Alert[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 function persist(rooms: GrowRoom[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
   } catch {
-    /* storage full / disabled — fine */
+    /* storage full / disabled */
+  }
+}
+function persistAlerts(alerts: Alert[]) {
+  try {
+    localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts.slice(-300)));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -184,7 +238,7 @@ function currentPhase(cs: CropSteering, nowMinOfDay: number): "P0" | "P1" | "P2"
   const minOfLight = on <= off ? nowMinOfDay - on : (nowMinOfDay - on + 24 * 60) % (24 * 60);
   const lightLen = (off - on + 24 * 60) % (24 * 60) || 12 * 60;
   const minFromEnd = lightLen - minOfLight;
-  if (minOfLight < cs.p1StartMin) return "P1"; // technically pre-P1 is also dryback, but call it P1 build-up
+  if (minOfLight < cs.p1StartMin) return "P1";
   if (minOfLight < cs.p1StartMin + cs.p1DurationMin) return "P1";
   if (minFromEnd <= cs.p3StartMinBeforeOff) return "P3";
   return "P2";
@@ -197,7 +251,6 @@ function tickCropSteering(room: GrowRoom): GrowRoom {
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const phase = currentPhase(cs, nowMin);
 
-  // Decide whether to irrigate this tick
   const sinceLast = cs.irrigationHistory[cs.irrigationHistory.length - 1];
   const minsSince = sinceLast ? (Date.now() - sinceLast.t) / 60000 : 999;
 
@@ -218,7 +271,6 @@ function tickCropSteering(room: GrowRoom): GrowRoom {
     vwc = Math.min(cs.fieldCapacity + 1, vwc + shot * 1.1);
     ec = Math.max(cs.ecFeed, ec - shot * 0.08);
   } else {
-    // Dryback drift. P0 drier, P2 keeps near FC
     const drift = phase === "P0" ? 0.08 : phase === "P3" ? 0.05 : 0.02;
     vwc -= drift;
     ec += 0.003;
@@ -249,8 +301,38 @@ function tickCropSteering(room: GrowRoom): GrowRoom {
   };
 }
 
+function tickLightLifetime(room: GrowRoom): GrowRoom {
+  // Advance hoursRun for lights that are currently effectively on.
+  const now = new Date();
+  const stepHours = 2.5 / 3600; // tick interval 2.5s
+  const devices = room.devices.map((d) => {
+    if (d.type !== "light" || !d.on || !d.lightConfig) return d;
+    const cfg = d.lightConfig;
+    if (cfg.scene === "dark") return d;
+    const on = d.scheduleOn ?? "06:00";
+    const [h, m] = on.split(":").map(Number);
+    const onMin = (h ?? 0) * 60 + (m ?? 0);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const since = (nowMin - onMin + 24 * 60) % (24 * 60);
+    if (since >= cfg.photoperiod.onH * 60) return d;
+    return {
+      ...d,
+      lightConfig: { ...cfg, hoursRun: +(cfg.hoursRun + stepHours).toFixed(2) },
+    };
+  });
+  return { ...room, devices };
+}
+
+function tickDayCounter(room: GrowRoom): GrowRoom {
+  if (!room.plantedAt) return room;
+  const day = Math.max(1, Math.floor((Date.now() - room.plantedAt) / DAY_MS) + 1);
+  if (day === room.day) return room;
+  return { ...room, day };
+}
+
 export const useStore = create<State>((set) => ({
   rooms: loadRooms() ?? seedRooms,
+  alerts: loadAlerts(),
   activeRoomId: (loadRooms() ?? seedRooms)[0].id,
   tickEnabled: true,
 
@@ -291,11 +373,24 @@ export const useStore = create<State>((set) => ({
         id: `room-${Math.random().toString(36).slice(2, 8)}`,
         name: `${src.name} (Kopie)`,
         day: 1,
-        devices: src.devices.map((d) => ({ ...d, id: `d-${Math.random().toString(36).slice(2, 8)}` })),
+        plantedAt: Date.now(),
+        journal: [],
+        devices: src.devices.map((d) => ({
+          ...d,
+          id: `d-${Math.random().toString(36).slice(2, 8)}`,
+          lightConfig: d.lightConfig ? { ...d.lightConfig, hoursRun: 0 } : undefined,
+        })),
       };
       const rooms = [...s.rooms, copy];
       persist(rooms);
       return { rooms, activeRoomId: copy.id };
+    }),
+
+  setRoomMeta: (id, patch) =>
+    set((s) => {
+      const rooms = s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r));
+      persist(rooms);
+      return { rooms };
     }),
 
   toggleDevice: (roomId, deviceId) =>
@@ -337,6 +432,64 @@ export const useStore = create<State>((set) => ({
           ? r
           : { ...r, devices: r.devices.map((d) => (d.id === deviceId ? { ...d, mode } : d)) },
       );
+      persist(rooms);
+      return { rooms };
+    }),
+
+  setDeviceSchedule: (roomId, deviceId, patch) =>
+    set((s) => {
+      const rooms = s.rooms.map((r) =>
+        r.id !== roomId
+          ? r
+          : {
+              ...r,
+              devices: r.devices.map((d) => (d.id === deviceId ? { ...d, ...patch } : d)),
+            },
+      );
+      persist(rooms);
+      return { rooms };
+    }),
+
+  updateLightConfig: (roomId, deviceId, patch) =>
+    set((s) => {
+      const rooms = s.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        return {
+          ...r,
+          devices: r.devices.map((d) => {
+            if (d.id !== deviceId || !d.lightConfig) return d;
+            return { ...d, lightConfig: { ...d.lightConfig, ...patch } };
+          }),
+        };
+      });
+      persist(rooms);
+      return { rooms };
+    }),
+
+  applyLightScene: (roomId, deviceId, scene) =>
+    set((s) => {
+      const rooms = s.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        return {
+          ...r,
+          devices: r.devices.map((d) => {
+            if (d.id !== deviceId || !d.lightConfig) return d;
+            const preset = SCENE_PRESETS[scene];
+            const merged = { ...d.lightConfig, ...preset, scene };
+            // adjust scheduleOff from scheduleOn + onH
+            let patch: Partial<Device> = { lightConfig: merged };
+            if (preset.photoperiod && d.scheduleOn) {
+              const [h, m] = d.scheduleOn.split(":").map(Number);
+              const offMin = ((h ?? 0) * 60 + (m ?? 0) + preset.photoperiod.onH * 60) % (24 * 60);
+              const off = `${Math.floor(offMin / 60).toString().padStart(2, "0")}:${(offMin % 60).toString().padStart(2, "0")}`;
+              patch = { ...patch, scheduleOff: off };
+            }
+            if (scene === "dark") patch = { ...patch, on: false };
+            else patch = { ...patch, on: true };
+            return { ...d, ...patch };
+          }),
+        };
+      });
       persist(rooms);
       return { rooms };
     }),
@@ -432,18 +585,59 @@ export const useStore = create<State>((set) => ({
       return { rooms };
     }),
 
+  addJournal: (roomId, tag, text) =>
+    set((s) => {
+      const entry: JournalEntry = {
+        id: `j-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        t: Date.now(),
+        tag,
+        text: text.slice(0, 500),
+      };
+      const rooms = s.rooms.map((r) =>
+        r.id !== roomId ? r : { ...r, journal: [entry, ...r.journal].slice(0, 200) },
+      );
+      persist(rooms);
+      return { rooms };
+    }),
+
+  deleteJournal: (roomId, entryId) =>
+    set((s) => {
+      const rooms = s.rooms.map((r) =>
+        r.id !== roomId ? r : { ...r, journal: r.journal.filter((e) => e.id !== entryId) },
+      );
+      persist(rooms);
+      return { rooms };
+    }),
+
+  acknowledgeAlert: (id) =>
+    set((s) => {
+      const alerts = s.alerts.map((a) => (a.id === id ? { ...a, acknowledged: true } : a));
+      persistAlerts(alerts);
+      return { alerts };
+    }),
+
+  clearResolvedAlerts: () =>
+    set((s) => {
+      const alerts = s.alerts.filter((a) => !a.endedAt);
+      persistAlerts(alerts);
+      return { alerts };
+    }),
+
   tick: () =>
-    set((s) =>
-      s.tickEnabled
-        ? {
-            rooms: s.rooms.map((r) => {
-              let next = applyDeviceEffects(r);
-              next = applyRules(next);
-              next = pushHistory(next);
-              next = tickCropSteering(next);
-              return next;
-            }),
-          }
-        : s,
-    ),
+    set((s) => {
+      if (!s.tickEnabled) return s;
+      const rooms = s.rooms.map((r) => {
+        let next = applyDeviceEffects(r);
+        next = applyRules(next);
+        next = pushHistory(next);
+        next = tickCropSteering(next);
+        next = tickLightLifetime(next);
+        next = tickDayCounter(next);
+        return next;
+      });
+      let alerts = s.alerts;
+      for (const r of rooms) alerts = reconcileAlerts(r, alerts);
+      persistAlerts(alerts);
+      return { rooms, alerts };
+    }),
 }));
