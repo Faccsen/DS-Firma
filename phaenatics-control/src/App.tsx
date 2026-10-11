@@ -10,7 +10,7 @@ import { LightsView } from "./components/LightsView";
 import { AlertsView } from "./components/AlertsView";
 import { ZonesView } from "./components/ZonesView";
 import { MobileNav } from "./components/MobileNav";
-import { BackgroundSeal } from "./components/BackgroundSeal";
+import { TrichomeBackground } from "./components/TrichomeBackground";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { useStore } from "./lib/store";
 
@@ -63,7 +63,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex">
-      <BackgroundSeal />
+      <TrichomeBackground />
       <Sidebar view={view} onView={setView} />
       <main className="flex-1 min-w-0 flex flex-col pb-16 md:pb-0">
         <TopBar title={titles[view]} subtitle={subtitles[view]} />

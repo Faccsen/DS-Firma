@@ -131,16 +131,29 @@ export async function acSetPort(args: {
   await post<unknown>("/api/ac-infinity/set-port", args);
 }
 
-/** Convert AC Infinity sensor units (tenths) to real values. */
+/**
+ * AC Infinity reports sensor values at different precisions depending on
+ * controller model and firmware (tenths, hundredths, sometimes thousandths).
+ * Instead of hard-coding one divisor, autoscale by dividing by 10 until the
+ * value falls below a reasonable physical cutoff for that metric.
+ */
+function autoScale(v: number | undefined, cutoff: number): number | undefined {
+  if (v == null) return undefined;
+  let n = v;
+  // guard: at most 4 divisions to prevent infinite loops on bogus data
+  for (let i = 0; i < 4 && n > cutoff; i++) n /= 10;
+  return +n.toFixed(2);
+}
+
 export function parseSensors(d: AcController["deviceInfo"]) {
   return {
-    temp: d.temperature != null ? d.temperature / 10 : undefined,
-    humidity: d.humidity != null ? d.humidity / 10 : undefined,
-    vpd: d.vpdnums != null ? d.vpdnums / 10 : undefined,
-    co2: d.co2 ?? undefined,
-    outTemp: d.outTemperature != null ? d.outTemperature / 10 : undefined,
-    outHumidity: d.outHumidity != null ? d.outHumidity / 10 : undefined,
-    outVpd: d.outVpdnums != null ? d.outVpdnums / 10 : undefined,
+    temp: autoScale(d.temperature, 60), // °C, grow range ~15-40
+    humidity: autoScale(d.humidity, 110), // %
+    vpd: autoScale(d.vpdnums, 6), // kPa, max realistic ~5
+    co2: autoScale(d.co2, 3000), // ppm
+    outTemp: autoScale(d.outTemperature, 60),
+    outHumidity: autoScale(d.outHumidity, 110),
+    outVpd: autoScale(d.outVpdnums, 6),
   };
 }
 
