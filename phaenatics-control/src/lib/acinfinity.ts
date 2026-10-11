@@ -76,27 +76,34 @@ export async function acLogin(email: string, password: string): Promise<AcLoginR
     str(data.id) ??
     str((data.user as Record<string, unknown> | undefined)?.appId);
 
+  // AC Infinity's cloud returns ONLY appId — no separate auth token.
+  // The user's own mobile app uses appId as the auth value for every
+  // subsequent request. If a future API version does add a token field,
+  // we prefer that; otherwise fall back to appId.
   const token =
     str(data.loginAuthToken) ??
     str(data.appIdLogin) ??
     str(data.token) ??
     str(data.authToken) ??
     str(data.auth) ??
-    str((data.user as Record<string, unknown> | undefined)?.loginAuthToken);
+    str((data.user as Record<string, unknown> | undefined)?.loginAuthToken) ??
+    userId;
 
   const nickname =
+    str(data.nickName) ??
     str(data.nickname) ??
     str(data.userName) ??
     str(data.name) ??
+    str((data.user as Record<string, unknown> | undefined)?.nickName) ??
     str((data.user as Record<string, unknown> | undefined)?.nickname);
 
-  if (!userId || !token) {
-    const keys = Object.keys(data).slice(0, 10).join(", ");
+  if (!userId) {
+    const keys = Object.keys(data).slice(0, 15).join(", ");
     throw new Error(
-      `Login-Antwort unvollständig. Felder: {${keys || "leer"}}. Melde das kurz zurück, dann map ich die neuen Namen.`,
+      `Login-Antwort ohne userId. Felder: {${keys || "leer"}}. Melde das kurz zurück.`,
     );
   }
-  return { userId, token, nickname };
+  return { userId, token: token!, nickname };
 }
 
 export async function acListDevices(
