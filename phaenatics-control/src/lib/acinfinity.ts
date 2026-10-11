@@ -1,0 +1,134 @@
+// Client for AC Infinity cloud API via our Vercel serverless proxy.
+// All requests go to /api/ac-infinity/* which forward to AC Infinity's
+// reverse-engineered mobile-app endpoints.
+
+export interface AcLoginResult {
+  userId: string;
+  token: string;
+  nickname?: string;
+}
+
+export interface AcPort {
+  port: number;
+  portName: string;
+  speak: number;
+  modeType: number; // 0 off, 1 on, 2 auto, 3 schedule…
+  loadType: number; // device kind id reported by UIS
+  loadState: number; // 0 off / 1 on
+}
+
+export interface AcController {
+  devId: string;
+  devName: string;
+  devType: number; // controller model
+  deviceInfo: {
+    temperature?: number; // tenths of °C
+    humidity?: number; // tenths of %
+    vpdnums?: number; // tenths of kPa
+    co2?: number;
+    ports?: AcPort[];
+  };
+  // Older payload layout keeps ports on devInfo
+}
+
+interface Envelope<T> {
+  code: number;
+  msg?: string;
+  data?: T;
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const resp = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  let parsed: Envelope<T> | T;
+  try {
+    parsed = JSON.parse(text) as Envelope<T> | T;
+  } catch {
+    throw new Error(`Nicht-JSON Antwort (${resp.status}): ${text.slice(0, 120)}`);
+  }
+  if (typeof parsed === "object" && parsed !== null && "code" in parsed) {
+    const env = parsed as Envelope<T>;
+    if (env.code !== 200) {
+      throw new Error(env.msg || `API-Fehler Code ${env.code}`);
+    }
+    return env.data as T;
+  }
+  return parsed as T;
+}
+
+export async function acLogin(email: string, password: string): Promise<AcLoginResult> {
+  type LoginData = {
+    appId: string;
+    appIdLogin?: string;
+    loginAuthToken?: string;
+    nickname?: string;
+  };
+  const data = await post<LoginData>("/api/ac-infinity/login", { email, password });
+  if (!data.appId || !data.loginAuthToken) {
+    throw new Error("Login-Antwort unvollständig");
+  }
+  return { userId: data.appId, token: data.loginAuthToken, nickname: data.nickname };
+}
+
+export async function acListDevices(
+  userId: string,
+  token: string,
+): Promise<AcController[]> {
+  const data = await post<AcController[]>("/api/ac-infinity/devices", { userId, token });
+  return Array.isArray(data) ? data : [];
+}
+
+export async function acSetPort(args: {
+  userId: string;
+  token: string;
+  devId: string;
+  port: number;
+  modeType?: number;
+  speak?: number;
+}): Promise<void> {
+  await post<unknown>("/api/ac-infinity/set-port", args);
+}
+
+/** Convert AC Infinity sensor units (tenths) to real values. */
+export function parseSensors(d: AcController["deviceInfo"]) {
+  return {
+    temp: d.temperature != null ? d.temperature / 10 : undefined,
+    humidity: d.humidity != null ? d.humidity / 10 : undefined,
+    vpd: d.vpdnums != null ? d.vpdnums / 10 : undefined,
+    co2: d.co2 ?? undefined,
+  };
+}
+
+/** Map AC Infinity port loadType to our DeviceType. Best-effort guesses. */
+export function loadTypeToDeviceKind(
+  loadType: number,
+): "fan" | "intake" | "exhaust" | "light" | "humidifier" | "dehumidifier" | "heater" | "ac" | "co2" | "pump" {
+  // AC Infinity's load types are not fully documented. These are observed
+  // mappings from the reverse-engineered API; unknowns fall back to "fan".
+  switch (loadType) {
+    case 1:
+      return "intake";
+    case 2:
+      return "exhaust";
+    case 3:
+      return "light";
+    case 4:
+      return "humidifier";
+    case 5:
+      return "dehumidifier";
+    case 6:
+      return "heater";
+    case 7:
+      return "ac";
+    case 8:
+      return "co2";
+    case 9:
+      return "fan";
+    default:
+      return "fan";
+  }
+}

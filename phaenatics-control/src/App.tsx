@@ -20,6 +20,9 @@ export default function App() {
   const rooms = useStore((s) => s.rooms);
   const alerts = useStore((s) => s.alerts);
   const activeRoomId = useStore((s) => s.activeRoomId);
+  const connectionMode = useStore((s) => s.connection.mode);
+  const pollingSec = useStore((s) => s.connection.pollingSec);
+  const pollAcInfinity = useStore((s) => s.pollAcInfinity);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
   const activeAlerts = alerts.filter((a) => !a.endedAt).length;
 
@@ -27,6 +30,14 @@ export default function App() {
     const id = setInterval(tick, 2500);
     return () => clearInterval(id);
   }, [tick]);
+
+  // Live polling of AC Infinity cloud when connected
+  useEffect(() => {
+    if (connectionMode !== "acinfinity") return;
+    pollAcInfinity();
+    const id = setInterval(pollAcInfinity, Math.max(10, pollingSec) * 1000);
+    return () => clearInterval(id);
+  }, [connectionMode, pollingSec, pollAcInfinity]);
 
   const titles: Record<View, string> = {
     dashboard: "Übersicht",
