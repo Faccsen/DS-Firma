@@ -17,20 +17,42 @@ export interface AcPort {
   loadState: number; // 0 off / 1 on
 }
 
+/**
+ * Modern AC Infinity controllers (devType ≥ 20) expose a `sensors` array
+ * where each entry has a type, an access port and a raw value with its
+ * own precision. This is the ground truth; the top-level temperature /
+ * humidity / vpdnums fields on these controllers are a mirror of the
+ * SECONDARY (external) probe for backwards compat.
+ *
+ * Known sensor types (verified against live devType 20 payload):
+ *   1 = Temperature °C   (INNEN — fan-mounted smart probe)
+ *   2 = Humidity %       (INNEN)
+ *   3 = VPD kPa          (INNEN)
+ *   5 = Temperature °C   (AUSSEN — dedicated controller probe)
+ *   6 = Humidity %       (AUSSEN)
+ *   7 = VPD kPa          (AUSSEN)
+ */
+export interface AcSensor {
+  sensorType: number;
+  sensorUnit: number;
+  /** How many digits are packed as integer. 3 → ÷100, 2 → ÷10, 1 → raw. */
+  sensorPrecision: number;
+  sensorTrend: number;
+  accessPort: number;
+  sensorData: number;
+  sensorKey?: string;
+}
+
 export interface AcController {
   devId: string;
   devName: string;
   devType: number;
   deviceInfo: {
-    temperature?: number; // tenths of °C
-    humidity?: number; // tenths of %
-    vpdnums?: number; // tenths of kPa
+    temperature?: number; // raw ints — mirrors AUSSEN probe on new firmware
+    humidity?: number;
+    vpdnums?: number;
     co2?: number;
-    /** Secondary (outdoor / second-probe) sensors */
-    outTemperature?: number;
-    outHumidity?: number;
-    outVpdnums?: number;
-    /** Online timestamp */
+    sensors?: AcSensor[];
     offlineTime?: string;
     updateTime?: string;
     ports?: AcPort[];
@@ -133,27 +155,53 @@ export async function acSetPort(args: {
 
 /**
  * AC Infinity reports sensor values at different precisions depending on
- * controller model and firmware (tenths, hundredths, sometimes thousandths).
- * Instead of hard-coding one divisor, autoscale by dividing by 10 until the
- * value falls below a reasonable physical cutoff for that metric.
+ * controller model and firmware. Autoscale by dividing by 10 until the
+ * value falls below a reasonable physical cutoff.
  */
 function autoScale(v: number | undefined, cutoff: number): number | undefined {
   if (v == null) return undefined;
   let n = v;
-  // guard: at most 4 divisions to prevent infinite loops on bogus data
   for (let i = 0; i < 4 && n > cutoff; i++) n /= 10;
   return +n.toFixed(2);
 }
 
+/** Decode one sensor entry's `sensorData` using its own precision field. */
+function decodeSensor(s: AcSensor | undefined): number | undefined {
+  if (!s) return undefined;
+  const divisor = Math.pow(10, Math.max(0, s.sensorPrecision - 1));
+  return +(s.sensorData / divisor).toFixed(2);
+}
+
+/**
+ * Return INNEN (primary / tent interior) and AUSSEN (secondary / external)
+ * sensor readings. Prefers the `sensors[]` array (modern firmware), falls
+ * back to top-level fields for older controllers that don't ship it.
+ */
 export function parseSensors(d: AcController["deviceInfo"]) {
+  const sensors = d.sensors ?? [];
+  const find = (type: number) => sensors.find((s) => s.sensorType === type);
+
+  // Modern path: sensors array
+  const innenTemp = decodeSensor(find(1));
+  const innenHum = decodeSensor(find(2));
+  const innenVpd = decodeSensor(find(3));
+  const aussenTemp = decodeSensor(find(5));
+  const aussenHum = decodeSensor(find(6));
+  const aussenVpd = decodeSensor(find(7));
+  const co2FromArr = decodeSensor(find(4)); // observed on CO2-equipped controllers
+
+  // Legacy fallback: top-level fields. Important: on newer firmware the
+  // top-level `temperature/humidity/vpdnums` MIRROR the AUSSEN probe
+  // (sensorType 5/6/7), so if the sensors array gave us INNEN we must
+  // NOT also use top-level as INNEN (that was the "swapped" bug).
   return {
-    temp: autoScale(d.temperature, 60), // °C, grow range ~15-40
-    humidity: autoScale(d.humidity, 110), // %
-    vpd: autoScale(d.vpdnums, 6), // kPa, max realistic ~5
-    co2: autoScale(d.co2, 3000), // ppm
-    outTemp: autoScale(d.outTemperature, 60),
-    outHumidity: autoScale(d.outHumidity, 110),
-    outVpd: autoScale(d.outVpdnums, 6),
+    temp: innenTemp ?? autoScale(d.temperature, 60),
+    humidity: innenHum ?? autoScale(d.humidity, 110),
+    vpd: innenVpd ?? autoScale(d.vpdnums, 6),
+    co2: co2FromArr ?? autoScale(d.co2, 3000),
+    outTemp: aussenTemp ?? (innenTemp != null ? autoScale(d.temperature, 60) : undefined),
+    outHumidity: aussenHum ?? (innenHum != null ? autoScale(d.humidity, 110) : undefined),
+    outVpd: aussenVpd ?? (innenVpd != null ? autoScale(d.vpdnums, 6) : undefined),
   };
 }
 
