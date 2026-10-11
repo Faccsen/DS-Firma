@@ -23,28 +23,36 @@ const PRESETS: Array<{ name: string; kind: RoomKind; stage: GrowStage }> = [
 
 export function AddRoomModal({ open, onClose }: Props) {
   const addRoom = useStore((s) => s.addRoom);
+  const setMeta = useStore((s) => s.setRoomMeta);
   const rooms = useStore((s) => s.rooms);
 
   const [name, setName] = useState("");
   const [kind, setKind] = useState<RoomKind>("standard");
   const [stage, setStage] = useState<GrowStage>("flowering");
+  const [plantedToday, setPlantedToday] = useState(true);
+  const [harvestInDays, setHarvestInDays] = useState<number>(63);
 
   if (!open) return null;
 
   function applyPreset(p: (typeof PRESETS)[number]) {
     setKind(p.kind);
     setStage(p.stage);
-    // suggest a numbered name based on existing rooms of this kind
+    setHarvestInDays(p.stage === "flowering" ? 63 : p.stage === "drying" ? 14 : 60);
     const existing = rooms.filter((r) => r.name.toLowerCase().startsWith(p.name.toLowerCase())).length;
     setName(`${p.name} ${existing + 1}`);
   }
 
   function submit() {
     const n = name.trim() || `Neuer Raum`;
-    addRoom({ name: n, kind, stage });
+    const id = addRoom({ name: n, kind, stage, harvestInDays });
+    if (plantedToday) {
+      setMeta(id, { plantedAt: Date.now() });
+    }
     setName("");
     setKind("standard");
     setStage("flowering");
+    setPlantedToday(true);
+    setHarvestInDays(63);
     onClose();
   }
 
@@ -131,6 +139,29 @@ export function AddRoomModal({ open, onClose }: Props) {
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <label className="flex items-center gap-2 card-2 px-3 py-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={plantedToday}
+              onChange={(e) => setPlantedToday(e.target.checked)}
+              className="accent-cream"
+            />
+            <span className="text-muted">Heute gepflanzt</span>
+          </label>
+          <label className="block">
+            <span className="stat-label">Ernte in Tagen (Ziel)</span>
+            <input
+              type="number"
+              min={0}
+              max={200}
+              value={harvestInDays}
+              onChange={(e) => setHarvestInDays(Number(e.target.value))}
+              className="mt-1 w-full card-2 px-2 py-1.5 text-sm tabular-nums text-fg outline-none focus:border-cream/40"
+            />
+          </label>
         </div>
 
         <div className="flex items-center justify-end gap-2 mt-6">

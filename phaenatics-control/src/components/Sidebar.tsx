@@ -8,12 +8,21 @@ import {
   Activity,
   Plus,
   Droplet,
+  Lightbulb,
+  AlertTriangle,
 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { PhaenaticsSeal } from "./Brand";
 import { AddRoomModal } from "./AddRoomModal";
 
-type View = "dashboard" | "room" | "automation" | "history" | "settings";
+type View =
+  | "dashboard"
+  | "room"
+  | "lights"
+  | "alerts"
+  | "automation"
+  | "history"
+  | "settings";
 
 interface Props {
   view: View;
@@ -22,13 +31,17 @@ interface Props {
 
 export function Sidebar({ view, onView }: Props) {
   const rooms = useStore((s) => s.rooms);
+  const alerts = useStore((s) => s.alerts);
   const activeRoomId = useStore((s) => s.activeRoomId);
   const selectRoom = useStore((s) => s.selectRoom);
   const [addOpen, setAddOpen] = useState(false);
+  const activeAlerts = alerts.filter((a) => !a.endedAt).length;
 
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "room", label: "Geräte", icon: Cpu },
+    { id: "lights", label: "Lampen", icon: Lightbulb },
+    { id: "alerts", label: "Alarme", icon: AlertTriangle, badge: activeAlerts },
     { id: "automation", label: "Automation", icon: Bell },
     { id: "history", label: "Verlauf", icon: BarChart3 },
     { id: "settings", label: "Einstellungen", icon: Settings },
@@ -52,6 +65,7 @@ export function Sidebar({ view, onView }: Props) {
         {nav.map((n) => {
           const Icon = n.icon;
           const active = view === n.id;
+          const badge = "badge" in n ? n.badge : undefined;
           return (
             <button
               key={n.id}
@@ -63,7 +77,12 @@ export function Sidebar({ view, onView }: Props) {
               }`}
             >
               <Icon className="size-4" />
-              {n.label}
+              <span className="flex-1 text-left">{n.label}</span>
+              {typeof badge === "number" && badge > 0 && (
+                <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-danger/80 text-fg">
+                  {badge}
+                </span>
+              )}
             </button>
           );
         })}

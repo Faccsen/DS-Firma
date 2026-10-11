@@ -1,13 +1,24 @@
-import { Thermometer, Droplets, Wind, Sparkles, ChevronRight, Droplet } from "lucide-react";
+import { Thermometer, Droplets, Wind, Sparkles, ChevronRight, Droplet, AlertTriangle } from "lucide-react";
 import type { GrowRoom } from "../lib/types";
 import { stageLabel, stageColor, kindLabel, kindColor } from "../lib/labels";
+import { activeAlerts } from "../lib/alerts";
 
 export function RoomCard({ room, onOpen }: { room: GrowRoom; onOpen: () => void }) {
   const onDevices = room.devices.filter((d) => d.on).length;
+  const alerts = activeAlerts(room);
+  const worstSev = alerts.find((a) => a.severity === "bad") ? "bad" : alerts[0]?.severity;
+  const toHarvest = room.harvestInDays ? room.harvestInDays - room.day : null;
+
+  const borderCls = worstSev === "bad"
+    ? "border-danger/40"
+    : worstSev === "warn"
+      ? "border-warn/40"
+      : "hover:border-leaf/30";
+
   return (
     <button
       onClick={onOpen}
-      className="card p-5 text-left hover:border-leaf/30 transition-colors group"
+      className={`card p-5 text-left transition-colors group ${borderCls}`}
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0">
@@ -23,6 +34,24 @@ export function RoomCard({ room, onOpen }: { room: GrowRoom; onOpen: () => void 
               </span>
             )}
             <span className="text-[11px] text-muted">Tag {room.day}</span>
+            {toHarvest !== null && toHarvest >= 0 && toHarvest <= 14 && (
+              <span className="pill text-cream border-cream/30 bg-cream/10">
+                🌾 D-{toHarvest}
+              </span>
+            )}
+            {alerts.length > 0 && (
+              <span
+                className={`pill ${
+                  worstSev === "bad"
+                    ? "text-danger border-danger/30 bg-danger/10"
+                    : "text-warn border-warn/30 bg-warn/10"
+                }`}
+                title={`${alerts.length} Alarm${alerts.length > 1 ? "e" : ""}`}
+              >
+                <AlertTriangle className="size-3" />
+                {alerts.length}
+              </span>
+            )}
           </div>
         </div>
         <ChevronRight className="size-4 text-muted group-hover:text-cream transition-colors shrink-0 ml-2" />
@@ -42,7 +71,7 @@ export function RoomCard({ room, onOpen }: { room: GrowRoom; onOpen: () => void 
         <span className="flex items-center gap-1.5">
           <span
             className={`size-1.5 rounded-full ${
-              room.lightOn ? "bg-leaf shadow-[0_0_6px_rgba(61,220,132,0.7)]" : "bg-muted/50"
+              room.lightOn ? "bg-leaf shadow-[0_0_6px_rgba(141,212,168,0.7)]" : "bg-muted/50"
             }`}
           />
           Licht {room.lightOn ? "an" : "aus"}

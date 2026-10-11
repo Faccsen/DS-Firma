@@ -17,6 +17,41 @@ export type DeviceType =
 
 export type DeviceMode = "manual" | "auto" | "schedule" | "off";
 
+export type LightScene =
+  | "seedling"
+  | "veg"
+  | "preflower"
+  | "flower"
+  | "finish"
+  | "dark"
+  | "manual";
+
+export interface LightSpectrum {
+  uv: number; // 0..100
+  blue: number;
+  white: number;
+  red: number;
+  farRed: number;
+}
+
+export interface LightConfig {
+  scene: LightScene;
+  /** Photoperiod in whole hours, onH + offH ≤ 24 */
+  photoperiod: { onH: number; offH: number };
+  /** Photosynthetic Photon Flux Density target (μmol/m²/s) */
+  ppfdTarget: number;
+  /** Lamp power at 100% level, Watts */
+  wattage: number;
+  /** Sunrise ramp duration in minutes (0 = instant) */
+  sunriseMin: number;
+  sunsetMin: number;
+  spectrum: LightSpectrum;
+  /** Lifetime runtime hours (sim) */
+  hoursRun: number;
+  /** Can spectrum be adjusted on this fixture */
+  tunable: boolean;
+}
+
 export interface Device {
   id: string;
   type: DeviceType;
@@ -27,6 +62,7 @@ export interface Device {
   mode: DeviceMode;
   scheduleOn?: string;
   scheduleOff?: string;
+  lightConfig?: LightConfig;
 }
 
 export interface Targets {
@@ -68,34 +104,57 @@ export interface IrrigationEvent {
 export interface CropSteering {
   strategy: SteeringStrategy;
   phase: IrrigationPhase;
-
-  // substrate sensors
-  vwc: number; // %
-  ecSubstrate: number; // mS/cm
+  vwc: number;
+  ecSubstrate: number;
   phSubstrate: number;
-  substrateTemp: number; // °C
-
-  // input (feed) sensors
+  substrateTemp: number;
   ecFeed: number;
   phFeed: number;
-
-  // state
-  fieldCapacity: number; // VWC % target
-  drybackPct: number; // % below field capacity right now
-  runoffPct: number; // last cycle
-
-  // schedule (minutes offsets from lights-on)
-  lightsOn: string; // "HH:MM"
-  lightsOff: string; // "HH:MM"
-  p1StartMin: number; // usually 60–120 min after lights-on
-  p1DurationMin: number; // 60–120 min
-  p1ShotPct: number; // 2–6%
-  p2ShotPct: number; // 1–3%
-  p2IntervalMin: number; // 30–120 min
-  p3StartMinBeforeOff: number; // 60–120 min before lights-off
-  drybackTargetPct: number; // overnight target dryback %
-
+  fieldCapacity: number;
+  drybackPct: number;
+  runoffPct: number;
+  lightsOn: string;
+  lightsOff: string;
+  p1StartMin: number;
+  p1DurationMin: number;
+  p1ShotPct: number;
+  p2ShotPct: number;
+  p2IntervalMin: number;
+  p3StartMinBeforeOff: number;
+  drybackTargetPct: number;
   irrigationHistory: IrrigationEvent[];
+}
+
+export type AlertMetric = "temp" | "humidity" | "vpd" | "co2" | "vwc" | "ec" | "ph";
+export type AlertSeverity = "warn" | "bad";
+
+export interface Alert {
+  id: string;
+  roomId: string;
+  metric: AlertMetric;
+  severity: AlertSeverity;
+  value: number;
+  threshold: { min: number; max: number };
+  startedAt: number;
+  endedAt?: number;
+  acknowledged: boolean;
+}
+
+export type JournalTag =
+  | "watering"
+  | "feeding"
+  | "defoliation"
+  | "ph"
+  | "transplant"
+  | "harvest"
+  | "ipm"
+  | "note";
+
+export interface JournalEntry {
+  id: string;
+  t: number;
+  tag: JournalTag;
+  text: string;
 }
 
 export interface GrowRoom {
@@ -114,4 +173,9 @@ export interface GrowRoom {
   rules: AutomationRule[];
   history: HistoryPoint[];
   cropSteering?: CropSteering;
+  /** Unix ms of day-1 (plant start) — day counter is derived from this when set */
+  plantedAt?: number;
+  /** Expected total days to harvest for countdown */
+  harvestInDays?: number;
+  journal: JournalEntry[];
 }

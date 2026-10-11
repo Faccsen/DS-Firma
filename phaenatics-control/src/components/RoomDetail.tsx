@@ -5,6 +5,8 @@ import { SensorTile } from "./SensorTile";
 import { VPDGauge } from "./VPDGauge";
 import { TargetEditor } from "./TargetEditor";
 import { CropSteeringView } from "./CropSteeringView";
+import { RoomJournal } from "./RoomJournal";
+import { RoomMetaEditor } from "./RoomMetaEditor";
 import { stageLabel, stageColor, kindLabel, kindColor } from "../lib/labels";
 
 export function RoomDetail() {
@@ -37,6 +39,11 @@ export function RoomDetail() {
               <span className={`pill ${kindColor(room.kind)}`}>{kindLabel(room.kind)}</span>
             )}
             <span className="text-[11px] text-muted">Tag {room.day}</span>
+            {room.harvestInDays && (
+              <span className="pill text-cream border-cream/30 bg-cream/10">
+                🌾 D-{Math.max(0, room.harvestInDays - room.day)}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -105,6 +112,11 @@ export function RoomDetail() {
             <DeviceControl key={d.id} roomId={room.id} device={d} />
           ))}
         </div>
+      </section>
+
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <RoomMetaEditor room={room} />
+        <RoomJournal room={room} />
       </section>
     </div>
   );
