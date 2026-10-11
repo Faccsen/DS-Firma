@@ -61,17 +61,42 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function acLogin(email: string, password: string): Promise<AcLoginResult> {
-  type LoginData = {
-    appId: string;
-    appIdLogin?: string;
-    loginAuthToken?: string;
-    nickname?: string;
-  };
-  const data = await post<LoginData>("/api/ac-infinity/login", { email, password });
-  if (!data.appId || !data.loginAuthToken) {
-    throw new Error("Login-Antwort unvollständig");
+  // AC Infinity has shipped multiple field spellings for the login payload
+  // across firmware/app versions. Accept any of the known names so we don't
+  // break the first time they rename something.
+  type LoginData = Record<string, unknown>;
+  const data = (await post<LoginData>("/api/ac-infinity/login", { email, password })) ?? {};
+
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : undefined;
+
+  const userId =
+    str(data.appId) ??
+    str(data.userId) ??
+    str(data.id) ??
+    str((data.user as Record<string, unknown> | undefined)?.appId);
+
+  const token =
+    str(data.loginAuthToken) ??
+    str(data.appIdLogin) ??
+    str(data.token) ??
+    str(data.authToken) ??
+    str(data.auth) ??
+    str((data.user as Record<string, unknown> | undefined)?.loginAuthToken);
+
+  const nickname =
+    str(data.nickname) ??
+    str(data.userName) ??
+    str(data.name) ??
+    str((data.user as Record<string, unknown> | undefined)?.nickname);
+
+  if (!userId || !token) {
+    const keys = Object.keys(data).slice(0, 10).join(", ");
+    throw new Error(
+      `Login-Antwort unvollständig. Felder: {${keys || "leer"}}. Melde das kurz zurück, dann map ich die neuen Namen.`,
+    );
   }
-  return { userId: data.appId, token: data.loginAuthToken, nickname: data.nickname };
+  return { userId, token, nickname };
 }
 
 export async function acListDevices(
