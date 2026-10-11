@@ -1,4 +1,5 @@
-import { Thermometer, Droplets, Wind, Sparkles, Trash2, Copy } from "lucide-react";
+import { useState } from "react";
+import { Thermometer, Droplets, Wind, Sparkles, Settings2 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { DeviceControl } from "./DeviceControl";
 import { SensorTile } from "./SensorTile";
@@ -8,14 +9,14 @@ import { CropSteeringView } from "./CropSteeringView";
 import { RoomJournal } from "./RoomJournal";
 import { RoomMetaEditor } from "./RoomMetaEditor";
 import { CombinedChart } from "./CombinedChart";
+import { EditRoomModal } from "./EditRoomModal";
 import { stageLabel, stageColor, kindLabel, kindColor } from "../lib/labels";
 
 export function RoomDetail() {
   const rooms = useStore((s) => s.rooms);
   const activeRoomId = useStore((s) => s.activeRoomId);
-  const deleteRoom = useStore((s) => s.deleteRoom);
-  const duplicateRoom = useStore((s) => s.duplicateRoom);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
+  const [editOpen, setEditOpen] = useState(false);
 
   if (!room) {
     return (
@@ -47,21 +48,15 @@ export function RoomDetail() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => duplicateRoom(room.id)} className="btn" title="Duplizieren">
-            <Copy className="size-4" />
-          </button>
-          <button
-            onClick={() => {
-              if (confirm(`Raum "${room.name}" wirklich löschen?`)) deleteRoom(room.id);
-            }}
-            className="btn text-danger border-danger/30 hover:bg-danger/10"
-            title="Löschen"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        </div>
+        <button onClick={() => setEditOpen(true)} className="btn">
+          <Settings2 className="size-4" />
+          Raum bearbeiten
+        </button>
       </section>
+
+      {editOpen && (
+        <EditRoomModal room={room} onClose={() => setEditOpen(false)} />
+      )}
 
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SensorTile
