@@ -205,13 +205,44 @@ export function parseSensors(d: AcController["deviceInfo"]) {
   };
 }
 
-/** Map AC Infinity port loadType to our DeviceType. Best-effort guesses. */
-export function loadTypeToDeviceKind(
-  loadType: number,
-): "fan" | "intake" | "exhaust" | "light" | "humidifier" | "dehumidifier" | "heater" | "ac" | "co2" | "pump" {
-  // AC Infinity's load types are not fully documented. These are observed
-  // mappings from the reverse-engineered API; unknowns fall back to "fan".
-  switch (loadType) {
+type Kind =
+  | "fan"
+  | "intake"
+  | "exhaust"
+  | "light"
+  | "humidifier"
+  | "dehumidifier"
+  | "heater"
+  | "ac"
+  | "co2"
+  | "pump";
+
+/**
+ * Guess a Phaenatics device type for an AC Infinity port.
+ *
+ * In practice `loadType` is usually `0` because AC Infinity does not
+ * auto-detect what's plugged into a port — the user labels it in the app
+ * ("ABLUFT", "Heizung Links", "Befeuchter"). So the port's human name is
+ * the far better signal. We fall back to the loadType enum and finally to
+ * a generic "fan" if nothing matches.
+ */
+export function portDeviceKind(opts: { loadType: number; portName?: string }): Kind {
+  const name = (opts.portName ?? "").toLowerCase().trim();
+
+  // Name-based patterns — ordered most-specific first
+  if (/\b(abluft|exhaust|ablass)\b/.test(name)) return "exhaust";
+  if (/\b(zuluft|intake|frischluft)\b/.test(name)) return "intake";
+  if (/(dehumid|entfeucht|trockner)/.test(name)) return "dehumidifier";
+  if (/(humid|befeucht|verdampfer)/.test(name)) return "humidifier";
+  if (/\b(heiz|heater|wärme|warm)\w*/.test(name)) return "heater";
+  if (/\b(licht|lampe|light|led|hps|cmh)\b/.test(name)) return "light";
+  if (/(klima|ac\b|air\s*cond|split)/.test(name)) return "ac";
+  if (/(co2|co₂)/.test(name)) return "co2";
+  if (/(pump|doser|dosier|peristalt)/.test(name)) return "pump";
+  if (/(fan|lüfter|lufter|clip|oscil|circ)/.test(name)) return "fan";
+
+  // Fallback to loadType enum (observed from older firmware)
+  switch (opts.loadType) {
     case 1:
       return "intake";
     case 2:
@@ -233,4 +264,9 @@ export function loadTypeToDeviceKind(
     default:
       return "fan";
   }
+}
+
+/** @deprecated use portDeviceKind — kept for backwards compat */
+export function loadTypeToDeviceKind(loadType: number): Kind {
+  return portDeviceKind({ loadType });
 }

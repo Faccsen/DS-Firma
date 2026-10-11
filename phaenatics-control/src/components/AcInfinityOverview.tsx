@@ -29,7 +29,7 @@ import {
   type AcController,
   type AcPort,
   acListDevices,
-  loadTypeToDeviceKind,
+  portDeviceKind,
   parseSensors,
 } from "../lib/acinfinity";
 
@@ -195,7 +195,9 @@ function ControllerCard({
 
   const s = parseSensors(ctrl.deviceInfo);
   const ports = ctrl.deviceInfo.ports ?? [];
-  const lightPort = ports.find((p) => loadTypeToDeviceKind(p.loadType) === "light");
+  const lightPort = ports.find(
+    (p) => portDeviceKind({ loadType: p.loadType, portName: p.portName }) === "light",
+  );
   const lightPct = lightPort?.loadState === 1 || (lightPort && lightPort.modeType !== 0) ? lightPort.speak : undefined;
   // AC Infinity controllers can have a dedicated external probe (sensorType
   // 5/6/7). When present we show an AUSSEN row inline. On modern firmware
@@ -474,7 +476,7 @@ function portLabel(p: AcPort): string {
 }
 
 function PortRow({ port }: { port: AcPort }) {
-  const kind = loadTypeToDeviceKind(port.loadType);
+  const kind = portDeviceKind({ loadType: port.loadType, portName: port.portName });
   const Icon = PORT_ICONS[kind] ?? Plug;
   const isOn = port.loadState === 1 || port.modeType !== 0;
   const value = isOn ? String(port.speak) : "– –";

@@ -5,7 +5,7 @@ import {
   type AcController,
   type AcPort,
   acListDevices,
-  loadTypeToDeviceKind,
+  portDeviceKind,
 } from "../lib/acinfinity";
 
 interface Props {
@@ -193,7 +193,7 @@ export function AcInfinityPairingModal({ onClose }: Props) {
                                   {ctrl.devName || ctrl.devId} · Port {port.port}{" "}
                                   {port.portName && `(${port.portName})`}
                                   {" · "}
-                                  {loadTypeToDeviceKind(port.loadType)}
+                                  {portDeviceKind({ loadType: port.loadType, portName: port.portName })}
                                 </option>
                               ))}
                             </select>

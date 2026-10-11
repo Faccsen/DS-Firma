@@ -29,7 +29,7 @@ import {
   type AcController,
   acListDevices,
   acSetPort,
-  loadTypeToDeviceKind,
+  portDeviceKind,
   parseSensors,
 } from "./acinfinity";
 import { defaultLightConfig } from "./light";
@@ -115,7 +115,7 @@ function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
-function kindLabelDe(k: ReturnType<typeof loadTypeToDeviceKind>): string {
+function kindLabelDe(k: ReturnType<typeof portDeviceKind>): string {
   return (
     {
       fan: "Lüfter",
@@ -1083,7 +1083,7 @@ export const useStore = create<State>((set, get) => ({
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId) return r;
         const importedDevices = ports.map((p) => {
-          const kind = loadTypeToDeviceKind(p.loadType);
+          const kind = portDeviceKind({ loadType: p.loadType, portName: p.portName });
           const id = `d-${Math.random().toString(36).slice(2, 8)}`;
           const name =
             p.portName && p.portName.trim().length > 0
