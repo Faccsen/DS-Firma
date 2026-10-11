@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { AlertTriangle, Check, CheckCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { useStore } from "../lib/store";
 import type { Alert } from "../lib/types";
 import { metricLabel, metricUnit } from "../lib/alerts";
@@ -9,18 +9,27 @@ export function AlertsView() {
   const rooms = useStore((s) => s.rooms);
   const ack = useStore((s) => s.acknowledgeAlert);
   const ackAll = useStore((s) => s.acknowledgeAllAlerts);
+  const resolveAll = useStore((s) => s.resolveAllAlerts);
   const clear = useStore((s) => s.clearResolvedAlerts);
   const selectRoom = useStore((s) => s.selectRoom);
+
+  const roomIds = new Set(rooms.map((r) => r.id));
 
   const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "–";
 
   const sorted = useMemo(
     () =>
-      [...alerts].sort((a, b) => {
-        if (!!a.endedAt !== !!b.endedAt) return a.endedAt ? 1 : -1;
-        return b.startedAt - a.startedAt;
-      }),
-    [alerts],
+      // Hide alerts for rooms that no longer exist
+      [...alerts]
+        .filter((a) => roomIds.has(a.roomId))
+        .sort((a, b) => {
+          if (!!a.endedAt !== !!b.endedAt) return a.endedAt ? 1 : -1;
+          return b.startedAt - a.startedAt;
+        }),
+    // roomIds is a Set — recompute when its membership changes via the
+    // underlying `rooms` array, which React tracks for us.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [alerts, rooms],
   );
 
   const active = sorted.filter((a) => !a.endedAt);
@@ -41,6 +50,12 @@ export function AlertsView() {
             <button onClick={ackAll} className="btn btn-primary">
               <CheckCheck className="size-4" />
               Alle bestätigen ({unackActive})
+            </button>
+          )}
+          {active.length > 0 && (
+            <button onClick={resolveAll} className="btn">
+              <X className="size-4" />
+              Alle aufräumen ({active.length})
             </button>
           )}
           {resolved.length > 0 && (
