@@ -20,6 +20,9 @@ import {
   Bluetooth,
   Share2,
   Cpu,
+  Code,
+  Copy as CopyIcon,
+  X,
 } from "lucide-react";
 import { useStore } from "../lib/store";
 import {
@@ -188,11 +191,21 @@ function ControllerCard({
   isImported: boolean;
   onImport: () => void;
 }) {
+  const [showRaw, setShowRaw] = useState(false);
+
   const s = parseSensors(ctrl.deviceInfo);
   const ports = ctrl.deviceInfo.ports ?? [];
   const lightPort = ports.find((p) => loadTypeToDeviceKind(p.loadType) === "light");
   const lightPct = lightPort?.loadState === 1 || (lightPort && lightPort.modeType !== 0) ? lightPort.speak : undefined;
+  // AC Infinity controllers can have a second probe. Field names vary by
+  // firmware (outTemperature, otherTemperature, two_temp, …) so instead of
+  // guessing we hide the AUSSEN row by default and let the user open
+  // "Rohdaten" to see every field we actually got.
   const hasOut = s.outTemp != null || s.outHumidity != null || s.outVpd != null;
+
+  // Detect any additional sensor-shaped fields in the raw payload we don't
+  // already surface. This lets the user see unknown probes verbatim.
+  const extras = findExtraSensors(ctrl.deviceInfo as Record<string, unknown>);
 
   const now = new Date();
   const timeStr = now.toLocaleString("de-DE", {
@@ -267,32 +280,40 @@ function ControllerCard({
         />
         <div />
 
-        {hasOut && (
-          <>
-            <BigStat
-              label="AUSSEN TEMP"
-              value={s.outTemp}
-              unit="°C"
-              precision={1}
-              trend={trend(s.outTemp, prev?.outTemp)}
-            />
-            <BigStat
-              label="AUSSEN FEUCHT"
-              value={s.outHumidity}
-              unit="%"
-              precision={1}
-              trend={trend(s.outHumidity, prev?.outHumidity)}
-            />
-            <BigStat
-              label="AUSSEN VPD"
-              value={s.outVpd}
-              unit="kPa"
-              precision={2}
-              trend={trend(s.outVpd, prev?.outVpd)}
-            />
-          </>
-        )}
       </div>
+
+      {/* Extra / unknown sensors found in the payload (second probe etc.) */}
+      {(hasOut || extras.length > 0) && (
+        <div className="mt-5 pt-4 border-t border-line">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-muted mb-2">
+            Weitere Sensoren im Payload
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-3">
+            {hasOut && s.outTemp != null && (
+              <BigStat label="AUSSEN TEMP?" value={s.outTemp} unit="°C" precision={1} />
+            )}
+            {hasOut && s.outHumidity != null && (
+              <BigStat label="AUSSEN FEUCHT?" value={s.outHumidity} unit="%" precision={1} />
+            )}
+            {hasOut && s.outVpd != null && (
+              <BigStat label="AUSSEN VPD?" value={s.outVpd} unit="kPa" precision={2} />
+            )}
+            {extras.map((e) => (
+              <BigStat
+                key={e.key}
+                label={e.key.toUpperCase()}
+                value={e.value}
+                unit=""
+                precision={e.value % 1 === 0 ? 0 : 2}
+              />
+            ))}
+          </div>
+          <div className="mt-2 text-[11px] text-muted">
+            Felder noch nicht sicher gemappt — tippe <span className="text-fg">Rohdaten</span> um
+            die exakten Namen zu sehen und mir zu melden.
+          </div>
+        </div>
+      )}
 
       {/* Divider */}
       <div className="h-px bg-line my-5" />
@@ -307,21 +328,117 @@ function ControllerCard({
       )}
 
       {/* Footer / import action */}
-      <div className="flex items-center justify-between mt-5 pt-4 border-t border-line">
+      <div className="flex items-center justify-between mt-5 pt-4 border-t border-line gap-2 flex-wrap">
         <div className="text-[11px] text-muted">
           {ports.length} Ports · Model {ctrl.devType ?? "–"}
         </div>
-        {isImported ? (
-          <span className="pill text-leaf border-leaf/30 bg-leaf/10">
-            <Check className="size-3" />
-            Übernommen
-          </span>
-        ) : (
-          <button onClick={onImport} className="btn btn-primary text-xs">
-            <Download className="size-3.5" />
-            Als Phaenatics-Raum übernehmen
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowRaw(true)}
+            className="btn text-xs"
+            title="Rohe API-Antwort anzeigen"
+          >
+            <Code className="size-3.5" />
+            Rohdaten
           </button>
-        )}
+          {isImported ? (
+            <span className="pill text-leaf border-leaf/30 bg-leaf/10">
+              <Check className="size-3" />
+              Übernommen
+            </span>
+          ) : (
+            <button onClick={onImport} className="btn btn-primary text-xs">
+              <Download className="size-3.5" />
+              Als Phaenatics-Raum übernehmen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showRaw && (
+        <RawDataModal ctrl={ctrl} onClose={() => setShowRaw(false)} />
+      )}
+    </div>
+  );
+}
+
+/** Heuristically find sensor-like values in the raw deviceInfo that we
+ *  don't already expose as INNEN or AUSSEN. */
+function findExtraSensors(info: Record<string, unknown>): Array<{ key: string; value: number }> {
+  const known = new Set([
+    "temperature",
+    "humidity",
+    "vpdnums",
+    "co2",
+    "outTemperature",
+    "outHumidity",
+    "outVpdnums",
+    "ports",
+    "offlineTime",
+    "updateTime",
+  ]);
+  const out: Array<{ key: string; value: number }> = [];
+  for (const [k, v] of Object.entries(info)) {
+    if (known.has(k)) continue;
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    if (!/temp|humid|vpd|co2|probe|ext|out|two|sub/i.test(k)) continue;
+    // Normalize using the same auto-scaling heuristic for display
+    let n = v;
+    const cutoff = /vpd/i.test(k) ? 6 : /humid/i.test(k) ? 110 : /co2/i.test(k) ? 3000 : 60;
+    for (let i = 0; i < 4 && n > cutoff; i++) n /= 10;
+    out.push({ key: k, value: +n.toFixed(2) });
+  }
+  return out.slice(0, 6);
+}
+
+/* ============ Raw data modal ============ */
+
+function RawDataModal({ ctrl, onClose }: { ctrl: AcController; onClose: () => void }) {
+  const json = JSON.stringify(ctrl, null, 2);
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(json);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm grid place-items-center p-3 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="card w-full max-w-3xl p-4 my-4 relative"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3 gap-3">
+          <div>
+            <h3 className="display text-lg text-cream">
+              Rohdaten · {ctrl.devName || ctrl.devId}
+            </h3>
+            <p className="text-[11px] text-muted mt-0.5">
+              Volle API-Antwort. Kopieren und mir schicken, dann map ich
+              Innen-/Außen-Felder exakt für dieses Controller-Modell.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={copy} className="btn text-xs">
+              <CopyIcon className="size-3.5" />
+              {copied ? "Kopiert" : "Kopieren"}
+            </button>
+            <button onClick={onClose} className="btn btn-ghost" aria-label="Schließen">
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+        <pre className="card-2 p-3 text-[11px] text-fg font-mono overflow-auto max-h-[60vh] whitespace-pre-wrap break-all">
+          {json}
+        </pre>
       </div>
     </div>
   );
