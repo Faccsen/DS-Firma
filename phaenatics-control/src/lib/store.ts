@@ -89,6 +89,7 @@ interface State {
   acknowledgeAllAlerts: () => void;
   resolveAllAlerts: () => void;
   clearResolvedAlerts: () => void;
+  wipeAllAlerts: () => void;
 
   tick: () => void;
 }
@@ -1021,6 +1022,18 @@ export const useStore = create<State>((set, get) => ({
       );
       persistAudit(audit);
       return { alerts, audit };
+    }),
+
+  wipeAllAlerts: () =>
+    set((s) => {
+      const n = s.alerts.length;
+      persistAlerts([]);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("alert", "Alle Alarme geleert (Nuke)", { details: `${n} entfernt` }),
+      );
+      persistAudit(audit);
+      return { alerts: [], audit };
     }),
 
   tick: () =>

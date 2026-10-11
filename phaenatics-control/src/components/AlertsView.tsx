@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { AlertTriangle, Check, CheckCheck, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Check, CheckCheck, Trash2, X, Flame } from "lucide-react";
 import { useStore } from "../lib/store";
 import type { Alert } from "../lib/types";
 import { metricLabel, metricUnit } from "../lib/alerts";
@@ -11,9 +12,12 @@ export function AlertsView() {
   const ackAll = useStore((s) => s.acknowledgeAllAlerts);
   const resolveAll = useStore((s) => s.resolveAllAlerts);
   const clear = useStore((s) => s.clearResolvedAlerts);
+  const wipe = useStore((s) => s.wipeAllAlerts);
   const selectRoom = useStore((s) => s.selectRoom);
+  const [confirmWipe, setConfirmWipe] = useState(false);
 
   const roomIds = new Set(rooms.map((r) => r.id));
+  const orphans = alerts.filter((a) => !roomIds.has(a.roomId)).length;
 
   const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "–";
 
@@ -43,6 +47,7 @@ export function AlertsView() {
           <h2 className="display text-2xl text-cream">Alarme</h2>
           <p className="text-[12px] text-muted">
             {active.length} aktiv · {resolved.length} aufgelöst
+            {orphans > 0 && ` · ${orphans} aus gelöschten Räumen (versteckt)`}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -64,8 +69,45 @@ export function AlertsView() {
               Aufgelöste löschen
             </button>
           )}
+          {alerts.length > 0 && (
+            <button
+              onClick={() => setConfirmWipe(true)}
+              className="btn text-danger border-danger/30 hover:bg-danger/10"
+              title="Alle Alarme restlos löschen"
+            >
+              <Flame className="size-4" />
+              Nuke ({alerts.length})
+            </button>
+          )}
         </div>
       </section>
+
+      {confirmWipe && (
+        <div className="card border-danger/40 bg-danger/5 p-4 flex items-center gap-3">
+          <Flame className="size-5 text-danger shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm text-cream font-semibold">
+              Wirklich alle {alerts.length} Alarme restlos löschen?
+            </div>
+            <div className="text-[11px] text-muted">
+              Entfernt auch die Historie und die Alt-Lasten aus gelöschten Räumen.
+            </div>
+          </div>
+          <button onClick={() => setConfirmWipe(false)} className="btn text-xs">
+            Doch nicht
+          </button>
+          <button
+            onClick={() => {
+              wipe();
+              setConfirmWipe(false);
+            }}
+            className="btn text-xs bg-danger/90 text-fg border-danger"
+          >
+            <Flame className="size-3.5" />
+            Alles weg
+          </button>
+        </div>
+      )}
 
       {active.length === 0 && (
         <div className="card p-8 text-center">
