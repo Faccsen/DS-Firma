@@ -86,6 +86,7 @@ interface State {
   deleteJournal: (roomId: string, entryId: string) => void;
 
   acknowledgeAlert: (id: string) => void;
+  acknowledgeAllAlerts: () => void;
   clearResolvedAlerts: () => void;
 
   tick: () => void;
@@ -966,6 +967,22 @@ export const useStore = create<State>((set, get) => ({
           roomName: room?.name,
           details: al?.metric,
         }),
+      );
+      persistAudit(audit);
+      return { alerts, audit };
+    }),
+
+  acknowledgeAllAlerts: () =>
+    set((s) => {
+      const openCount = s.alerts.filter((a) => !a.endedAt && !a.acknowledged).length;
+      if (openCount === 0) return s;
+      const alerts = s.alerts.map((a) =>
+        a.endedAt || a.acknowledged ? a : { ...a, acknowledged: true },
+      );
+      persistAlerts(alerts);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("alert", "Alle Alarme bestätigt", { details: `${openCount} bestätigt` }),
       );
       persistAudit(audit);
       return { alerts, audit };
