@@ -17,7 +17,7 @@ import { useStore } from "../lib/store";
 import { RoomCard } from "./RoomCard";
 import { SensorTile } from "./SensorTile";
 import { VPDGauge } from "./VPDGauge";
-import { HistoryChart } from "./HistoryChart";
+import { CombinedChart } from "./CombinedChart";
 import { AddRoomModal } from "./AddRoomModal";
 import { activeAlerts as computeAlerts } from "../lib/alerts";
 import { instantPPFD, instantWatts } from "../lib/light";
@@ -298,7 +298,7 @@ export function Dashboard({ onOpenRoom, onOpenAlerts, onOpenLights }: Props) {
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
           <VPDGauge vpd={active.vpd} band={active.targets.vpd} />
           <div className="lg:col-span-2">
-            <HistoryChart data={active.history} metric="temp" />
+            <CombinedChart data={active.history} />
           </div>
         </div>
       </section>

@@ -8,6 +8,7 @@ import { HistoryView } from "./components/HistoryView";
 import { SettingsView } from "./components/SettingsView";
 import { LightsView } from "./components/LightsView";
 import { AlertsView } from "./components/AlertsView";
+import { ZonesView } from "./components/ZonesView";
 import { MobileNav } from "./components/MobileNav";
 import { BackgroundSeal } from "./components/BackgroundSeal";
 import { InstallPrompt } from "./components/InstallPrompt";
@@ -29,6 +30,7 @@ export default function App() {
 
   const titles: Record<View, string> = {
     dashboard: "Übersicht",
+    zones: "Zonen",
     room: room?.name ?? "Räume",
     lights: "Lampen",
     alerts: "Alarme",
@@ -39,11 +41,12 @@ export default function App() {
 
   const subtitles: Record<View, string> = {
     dashboard: `${rooms.length} Räume · Live-Klima`,
+    zones: `${rooms.length} Räume`,
     room: "Geräte, Zielwerte & Journal",
     lights: "Alle Lampen aller Räume",
     alerts: `${activeAlerts} aktiv`,
     automation: "Sensor-Regeln",
-    history: "Sensorverlauf",
+    history: "Was wurde wann geändert",
     settings: "App & Geräteoptionen",
   };
 
@@ -61,6 +64,7 @@ export default function App() {
               onOpenLights={() => setView("lights")}
             />
           )}
+          {view === "zones" && <ZonesView onOpenRoom={() => setView("room")} />}
           {view === "room" && <RoomDetail />}
           {view === "lights" && <LightsView />}
           {view === "alerts" && <AlertsView />}

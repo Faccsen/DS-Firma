@@ -157,6 +157,26 @@ export interface JournalEntry {
   text: string;
 }
 
+export type AuditCategory =
+  | "room"
+  | "device"
+  | "light"
+  | "target"
+  | "rule"
+  | "steering"
+  | "journal"
+  | "alert";
+
+export interface AuditEvent {
+  id: string;
+  t: number;
+  category: AuditCategory;
+  action: string;
+  roomName?: string;
+  deviceName?: string;
+  details?: string;
+}
+
 export interface GrowRoom {
   id: string;
   name: string;
