@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bluetooth, Wifi, Bell, Thermometer } from "lucide-react";
 import { PhaenaticsSeal } from "./Brand";
 import { ConnectionsSettings } from "./ConnectionsSettings";
+import { AcInfinityOverview } from "./AcInfinityOverview";
 import { useStore } from "../lib/store";
 
 interface Toggle {
@@ -51,7 +52,7 @@ export function SettingsView() {
   }
 
   return (
-    <div className="px-4 md:px-6 py-6 max-w-3xl space-y-5">
+    <div className="px-4 md:px-6 py-6 max-w-5xl space-y-5">
       <div className="flex items-center gap-4">
         <PhaenaticsSeal size={64} />
         <div>
@@ -64,6 +65,8 @@ export function SettingsView() {
       </div>
 
       <ConnectionsSettings />
+
+      {mode === "acinfinity" && <AcInfinityOverview />}
 
       <div className="card divide-y divide-line">
         {toggles.map((t) => {
