@@ -20,15 +20,21 @@ export interface AcPort {
 export interface AcController {
   devId: string;
   devName: string;
-  devType: number; // controller model
+  devType: number;
   deviceInfo: {
     temperature?: number; // tenths of °C
     humidity?: number; // tenths of %
     vpdnums?: number; // tenths of kPa
     co2?: number;
+    /** Secondary (outdoor / second-probe) sensors */
+    outTemperature?: number;
+    outHumidity?: number;
+    outVpdnums?: number;
+    /** Online timestamp */
+    offlineTime?: string;
+    updateTime?: string;
     ports?: AcPort[];
   };
-  // Older payload layout keeps ports on devInfo
 }
 
 interface Envelope<T> {
@@ -132,6 +138,9 @@ export function parseSensors(d: AcController["deviceInfo"]) {
     humidity: d.humidity != null ? d.humidity / 10 : undefined,
     vpd: d.vpdnums != null ? d.vpdnums / 10 : undefined,
     co2: d.co2 ?? undefined,
+    outTemp: d.outTemperature != null ? d.outTemperature / 10 : undefined,
+    outHumidity: d.outHumidity != null ? d.outHumidity / 10 : undefined,
+    outVpd: d.outVpdnums != null ? d.outVpdnums / 10 : undefined,
   };
 }
 
