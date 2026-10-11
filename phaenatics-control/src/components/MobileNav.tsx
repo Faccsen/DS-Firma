@@ -1,4 +1,4 @@
-import { LayoutDashboard, Cpu, Lightbulb, AlertTriangle, Settings } from "lucide-react";
+import { LayoutDashboard, LayoutList, Cpu, Lightbulb, AlertTriangle, Settings } from "lucide-react";
 import type { View } from "./Sidebar";
 import { useStore } from "../lib/store";
 
@@ -6,6 +6,7 @@ export function MobileNav({ view, onView }: { view: View; onView: (v: View) => v
   const activeAlerts = useStore((s) => s.alerts.filter((a) => !a.endedAt).length);
   const items = [
     { id: "dashboard", label: "Home", icon: LayoutDashboard, badge: 0 },
+    { id: "zones", label: "Zonen", icon: LayoutList, badge: 0 },
     { id: "room", label: "Geräte", icon: Cpu, badge: 0 },
     { id: "lights", label: "Lampen", icon: Lightbulb, badge: 0 },
     { id: "alerts", label: "Alarme", icon: AlertTriangle, badge: activeAlerts },
@@ -14,7 +15,7 @@ export function MobileNav({ view, onView }: { view: View; onView: (v: View) => v
 
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 border-t border-line bg-panel/90 backdrop-blur">
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-6">
         {items.map((it) => {
           const Icon = it.icon;
           const active = view === it.id;

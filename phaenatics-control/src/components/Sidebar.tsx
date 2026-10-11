@@ -10,6 +10,7 @@ import {
   Droplet,
   Lightbulb,
   AlertTriangle,
+  LayoutList,
 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { PhaenaticsSeal } from "./Brand";
@@ -17,6 +18,7 @@ import { AddRoomModal } from "./AddRoomModal";
 
 type View =
   | "dashboard"
+  | "zones"
   | "room"
   | "lights"
   | "alerts"
@@ -39,6 +41,7 @@ export function Sidebar({ view, onView }: Props) {
 
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "zones", label: "Zonen", icon: LayoutList },
     { id: "room", label: "Geräte", icon: Cpu },
     { id: "lights", label: "Lampen", icon: Lightbulb },
     { id: "alerts", label: "Alarme", icon: AlertTriangle, badge: activeAlerts },
