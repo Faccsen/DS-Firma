@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Bluetooth, Wifi, Bell, Thermometer } from "lucide-react";
 import { PhaenaticsSeal } from "./Brand";
+import { ConnectionsSettings } from "./ConnectionsSettings";
+import { useStore } from "../lib/store";
 
 interface Toggle {
   key: string;
@@ -11,6 +13,8 @@ interface Toggle {
 }
 
 export function SettingsView() {
+  const rooms = useStore((s) => s.rooms);
+  const mode = useStore((s) => s.connection.mode);
   const [toggles, setToggles] = useState<Toggle[]>([
     {
       key: "wifi",
@@ -53,10 +57,13 @@ export function SettingsView() {
         <div>
           <h2 className="display text-3xl text-cream leading-none">Phaenatics Control</h2>
           <p className="text-[12px] text-muted mt-1.5">
-            v0.1.0 · Sim Mode · 3 Räume verbunden · Cannabis Social Club Lüneburg
+            v0.2.0 · {mode === "acinfinity" ? "AC Infinity Live" : "Sim Mode"} ·{" "}
+            {rooms.length} Räume · Cannabis Social Club Lüneburg
           </p>
         </div>
       </div>
+
+      <ConnectionsSettings />
 
       <div className="card divide-y divide-line">
         {toggles.map((t) => {
@@ -91,9 +98,10 @@ export function SettingsView() {
       <div className="card p-5 text-[12px] text-muted leading-relaxed">
         <span className="display text-cream text-base">Phaenatics Control</span> ist die
         Grow-Controller-App des Phaenatics e.V. — Professioneller Cannabis Social Club
-        in Lüneburg. Live-Klima, Gerätesteuerung, Automationen und Crop Steering für
-        alle Räume des Vereins. Sensorwerte werden hier lokal simuliert — keine Daten
-        verlassen dein Gerät.
+        in Lüneburg. Live-Klima, Gerätesteuerung, Automationen, Crop Steering und
+        Lampensteuerung für alle Räume des Vereins. Ohne verbundene Hardware werden
+        Sensorwerte lokal simuliert — mit verbundener AC-Infinity-UIS-Hardware kommen
+        sie live aus der Cloud.
       </div>
     </div>
   );

@@ -19,15 +19,29 @@ import { vpd } from "./vpd";
 import { createRoom, seedRooms, strategyPreset } from "../data/seed";
 import { SCENE_PRESETS } from "./light";
 import { reconcileAlerts } from "./alerts";
+import {
+  type ConnectionConfig,
+  defaultConnection,
+  loadConnection,
+  persistConnection,
+} from "./connection";
+import { acListDevices, acSetPort, parseSensors } from "./acinfinity";
 
 interface State {
   rooms: GrowRoom[];
   alerts: Alert[];
   audit: AuditEvent[];
+  connection: ConnectionConfig;
+  connectionStatus: "idle" | "polling" | "error";
+  connectionError?: string;
+  lastPollAt?: number;
   activeRoomId: string;
   tickEnabled: boolean;
 
   clearAudit: () => void;
+  setConnection: (patch: Partial<ConnectionConfig>) => void;
+  disconnectAcInfinity: () => void;
+  pollAcInfinity: () => Promise<void>;
 
   selectRoom: (id: string) => void;
   setTick: (on: boolean) => void;
@@ -385,10 +399,12 @@ function tickDayCounter(room: GrowRoom): GrowRoom {
   return { ...room, day };
 }
 
-export const useStore = create<State>((set) => ({
+export const useStore = create<State>((set, get) => ({
   rooms: loadRooms() ?? seedRooms,
   alerts: loadAlerts(),
   audit: loadAudit(),
+  connection: loadConnection(),
+  connectionStatus: "idle",
   activeRoomId: (loadRooms() ?? seedRooms)[0].id,
   tickEnabled: true,
 
@@ -400,6 +416,81 @@ export const useStore = create<State>((set) => ({
       persistAudit([]);
       return { audit: [] };
     }),
+
+  setConnection: (patch) =>
+    set((s) => {
+      const connection: ConnectionConfig = { ...s.connection, ...patch };
+      persistConnection(connection);
+      return { connection };
+    }),
+
+  disconnectAcInfinity: () =>
+    set(() => {
+      const connection = defaultConnection();
+      persistConnection(connection);
+      return { connection, connectionStatus: "idle", connectionError: undefined };
+    }),
+
+  pollAcInfinity: async () => {
+    const { connection, rooms } = get();
+    if (connection.mode !== "acinfinity" || !connection.ac) return;
+    set({ connectionStatus: "polling" });
+    try {
+      const controllers = await acListDevices(connection.ac.userId, connection.ac.token);
+      // Index port readings by (devId, port)
+      const portMap = new Map<string, { speak: number; modeType: number; loadState: number }>();
+      for (const c of controllers) {
+        const ports = c.deviceInfo.ports ?? [];
+        for (const p of ports) {
+          portMap.set(`${c.devId}:${p.port}`, {
+            speak: p.speak,
+            modeType: p.modeType,
+            loadState: p.loadState,
+          });
+        }
+      }
+      // Apply to paired rooms + devices
+      const updated = rooms.map((r) => {
+        let next = r;
+        const sensorPair = connection.roomSensors.find((rs) => rs.roomId === r.id);
+        if (sensorPair) {
+          const ctrl = controllers.find((c) => c.devId === sensorPair.acDevId);
+          if (ctrl) {
+            const s = parseSensors(ctrl.deviceInfo);
+            next = {
+              ...next,
+              temp: s.temp ?? next.temp,
+              humidity: s.humidity ?? next.humidity,
+              vpd: s.vpd ?? next.vpd,
+              co2: s.co2 ?? next.co2,
+            };
+          }
+        }
+        const roomPairings = connection.pairings.filter((p) => p.roomId === r.id);
+        if (roomPairings.length) {
+          next = {
+            ...next,
+            devices: next.devices.map((d) => {
+              const pair = roomPairings.find((p) => p.appDeviceId === d.id);
+              if (!pair) return d;
+              const live = portMap.get(`${pair.acDevId}:${pair.acPort}`);
+              if (!live) return d;
+              return {
+                ...d,
+                on: live.loadState === 1 || live.modeType !== 0,
+                level: live.speak,
+              };
+            }),
+          };
+        }
+        return next;
+      });
+      persist(updated);
+      set({ rooms: updated, connectionStatus: "idle", connectionError: undefined, lastPollAt: Date.now() });
+    } catch (e) {
+      set({ connectionStatus: "error", connectionError: String(e) });
+    }
+  },
 
   addRoom: (opts) => {
     const room = createRoom(opts);
@@ -510,6 +601,21 @@ export const useStore = create<State>((set) => ({
         }),
       );
       persistAudit(audit);
+      // Forward to AC Infinity if the device is paired
+      const pair = s.connection.pairings.find((p) => p.appDeviceId === deviceId);
+      if (pair && s.connection.ac) {
+        acSetPort({
+          userId: s.connection.ac.userId,
+          token: s.connection.ac.token,
+          devId: pair.acDevId,
+          port: pair.acPort,
+          modeType: dev?.on ? 0 : 1, // flipped sense (0=off, 1=on)
+          speak: dev?.level,
+        }).catch(() => {
+          /* surface via connectionError on next poll */
+        });
+      }
+      persistAudit(audit);
       return { rooms, audit };
     }),
 
@@ -537,6 +643,17 @@ export const useStore = create<State>((set) => ({
         }),
       );
       persistAudit(audit);
+      const pair = s.connection.pairings.find((p) => p.appDeviceId === deviceId);
+      if (pair && s.connection.ac) {
+        acSetPort({
+          userId: s.connection.ac.userId,
+          token: s.connection.ac.token,
+          devId: pair.acDevId,
+          port: pair.acPort,
+          speak: level,
+          modeType: 1,
+        }).catch(() => undefined);
+      }
       return { rooms, audit };
     }),
 
@@ -870,8 +987,16 @@ export const useStore = create<State>((set) => ({
   tick: () =>
     set((s) => {
       if (!s.tickEnabled) return s;
+      // Rooms whose sensors are backed by a live AC Infinity controller
+      // should NOT drift via the simulator — we still push a history point
+      // (from current live values) and run rules, but skip applyDeviceEffects.
+      const liveRoomIds = new Set(
+        s.connection.mode === "acinfinity"
+          ? s.connection.roomSensors.map((rs) => rs.roomId)
+          : [],
+      );
       const rooms = s.rooms.map((r) => {
-        let next = applyDeviceEffects(r);
+        let next = liveRoomIds.has(r.id) ? r : applyDeviceEffects(r);
         next = applyRules(next);
         next = pushHistory(next);
         next = tickCropSteering(next);
