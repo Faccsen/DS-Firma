@@ -63,6 +63,10 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
   const toggle = useStore((s) => s.toggleDevice);
   const setLevel = useStore((s) => s.setDeviceLevel);
   const setMode = useStore((s) => s.setDeviceMode);
+  const paired = useStore((s) =>
+    s.connection.mode === "acinfinity" &&
+    s.connection.pairings.some((p) => p.appDeviceId === device.id),
+  );
   const [modal, setModal] = useState(false);
 
   const Icon = ICON[device.type];
@@ -85,7 +89,17 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
             <Icon className="size-5" />
           </div>
           <div>
-            <div className="text-sm font-medium">{device.name}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-medium">{device.name}</span>
+              {paired && (
+                <span
+                  className="pill text-leaf border-leaf/40 bg-leaf/10 text-[9px] px-1.5 py-0"
+                  title="Mit AC-Infinity-Hardware verbunden — Änderungen gehen live"
+                >
+                  LIVE
+                </span>
+              )}
+            </div>
             <div className="text-[11px] text-muted">
               Port {device.port} · {labelType(device.type)}
               {isLight && device.lightConfig && ` · ${sceneLabel(device.lightConfig.scene)}`}
