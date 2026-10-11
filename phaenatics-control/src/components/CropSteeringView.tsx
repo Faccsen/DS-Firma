@@ -1,11 +1,11 @@
+import { useState } from "react";
 import {
   Droplet,
   Sparkles,
   Thermometer,
   Zap,
   Play,
-  Trash2,
-  Copy,
+  Settings2,
 } from "lucide-react";
 import type { GrowRoom, IrrigationPhase, SteeringStrategy } from "../lib/types";
 import { useStore } from "../lib/store";
@@ -23,6 +23,7 @@ import { IrrigationChart } from "./IrrigationChart";
 import { RoomJournal } from "./RoomJournal";
 import { RoomMetaEditor } from "./RoomMetaEditor";
 import { CombinedChart } from "./CombinedChart";
+import { EditRoomModal } from "./EditRoomModal";
 
 const PHASES: IrrigationPhase[] = ["P0", "P1", "P2", "P3"];
 const STRATEGIES: SteeringStrategy[] = ["vegetative", "transition", "generative"];
@@ -31,8 +32,7 @@ export function CropSteeringView({ room }: { room: GrowRoom }) {
   const setStrategy = useStore((s) => s.setSteeringStrategy);
   const updateSteering = useStore((s) => s.updateSteering);
   const triggerShot = useStore((s) => s.triggerShot);
-  const deleteRoom = useStore((s) => s.deleteRoom);
-  const duplicateRoom = useStore((s) => s.duplicateRoom);
+  const [editOpen, setEditOpen] = useState(false);
 
   const cs = room.cropSteering;
   if (!cs) return null;
@@ -52,21 +52,15 @@ export function CropSteeringView({ room }: { room: GrowRoom }) {
             <span className="text-[11px] text-muted">Tag {room.day}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => duplicateRoom(room.id)} className="btn" title="Duplizieren">
-            <Copy className="size-4" />
-          </button>
-          <button
-            onClick={() => {
-              if (confirm(`Raum "${room.name}" wirklich löschen?`)) deleteRoom(room.id);
-            }}
-            className="btn text-danger border-danger/30 hover:bg-danger/10"
-            title="Löschen"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        </div>
+        <button onClick={() => setEditOpen(true)} className="btn">
+          <Settings2 className="size-4" />
+          Raum bearbeiten
+        </button>
       </section>
+
+      {editOpen && (
+        <EditRoomModal room={room} onClose={() => setEditOpen(false)} />
+      )}
 
       <section className="card p-5">
         <div className="flex items-center justify-between mb-3">
