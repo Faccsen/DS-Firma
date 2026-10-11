@@ -87,6 +87,7 @@ interface State {
 
   acknowledgeAlert: (id: string) => void;
   acknowledgeAllAlerts: () => void;
+  resolveAllAlerts: () => void;
   clearResolvedAlerts: () => void;
 
   tick: () => void;
@@ -526,13 +527,17 @@ export const useStore = create<State>((set, get) => ({
       const src = s.rooms.find((r) => r.id === id);
       const rooms = s.rooms.filter((r) => r.id !== id);
       const activeRoomId = s.activeRoomId === id ? rooms[0]?.id ?? "" : s.activeRoomId;
+      // Drop any lingering alerts for this room so the UI doesn't show
+      // orphan "–" rows later on.
+      const alerts = s.alerts.filter((a) => a.roomId !== id);
       persist(rooms);
+      persistAlerts(alerts);
       const audit = appendAudit(
         s.audit,
         auditEntry("room", "Raum gelöscht", { roomName: src?.name }),
       );
       persistAudit(audit);
-      return { rooms, activeRoomId, audit };
+      return { rooms, alerts, activeRoomId, audit };
     }),
 
   duplicateRoom: (id) =>
@@ -983,6 +988,23 @@ export const useStore = create<State>((set, get) => ({
       const audit = appendAudit(
         s.audit,
         auditEntry("alert", "Alle Alarme bestätigt", { details: `${openCount} bestätigt` }),
+      );
+      persistAudit(audit);
+      return { alerts, audit };
+    }),
+
+  resolveAllAlerts: () =>
+    set((s) => {
+      const openCount = s.alerts.filter((a) => !a.endedAt).length;
+      if (openCount === 0) return s;
+      const now = Date.now();
+      const alerts = s.alerts.map((a) =>
+        a.endedAt ? a : { ...a, endedAt: now, acknowledged: true },
+      );
+      persistAlerts(alerts);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("alert", "Alle Alarme aufgelöst", { details: `${openCount} aufgelöst` }),
       );
       persistAudit(audit);
       return { alerts, audit };
