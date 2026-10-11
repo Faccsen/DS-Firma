@@ -197,15 +197,11 @@ function ControllerCard({
   const ports = ctrl.deviceInfo.ports ?? [];
   const lightPort = ports.find((p) => loadTypeToDeviceKind(p.loadType) === "light");
   const lightPct = lightPort?.loadState === 1 || (lightPort && lightPort.modeType !== 0) ? lightPort.speak : undefined;
-  // AC Infinity controllers can have a second probe. Field names vary by
-  // firmware (outTemperature, otherTemperature, two_temp, …) so instead of
-  // guessing we hide the AUSSEN row by default and let the user open
-  // "Rohdaten" to see every field we actually got.
+  // AC Infinity controllers can have a dedicated external probe (sensorType
+  // 5/6/7). When present we show an AUSSEN row inline. On modern firmware
+  // (devType ≥ 20) the sensors[] array is the ground truth, so there is no
+  // more need for a "weitere Sensoren"-fallback section.
   const hasOut = s.outTemp != null || s.outHumidity != null || s.outVpd != null;
-
-  // Detect any additional sensor-shaped fields in the raw payload we don't
-  // already surface. This lets the user see unknown probes verbatim.
-  const extras = findExtraSensors(ctrl.deviceInfo as Record<string, unknown>);
 
   const now = new Date();
   const timeStr = now.toLocaleString("de-DE", {
@@ -280,40 +276,34 @@ function ControllerCard({
         />
         <div />
 
-      </div>
 
-      {/* Extra / unknown sensors found in the payload (second probe etc.) */}
-      {(hasOut || extras.length > 0) && (
-        <div className="mt-5 pt-4 border-t border-line">
-          <div className="text-[10px] uppercase tracking-[0.14em] text-muted mb-2">
-            Weitere Sensoren im Payload
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-3">
-            {hasOut && s.outTemp != null && (
-              <BigStat label="AUSSEN TEMP?" value={s.outTemp} unit="°C" precision={1} />
-            )}
-            {hasOut && s.outHumidity != null && (
-              <BigStat label="AUSSEN FEUCHT?" value={s.outHumidity} unit="%" precision={1} />
-            )}
-            {hasOut && s.outVpd != null && (
-              <BigStat label="AUSSEN VPD?" value={s.outVpd} unit="kPa" precision={2} />
-            )}
-            {extras.map((e) => (
-              <BigStat
-                key={e.key}
-                label={e.key.toUpperCase()}
-                value={e.value}
-                unit=""
-                precision={e.value % 1 === 0 ? 0 : 2}
-              />
-            ))}
-          </div>
-          <div className="mt-2 text-[11px] text-muted">
-            Felder noch nicht sicher gemappt — tippe <span className="text-fg">Rohdaten</span> um
-            die exakten Namen zu sehen und mir zu melden.
-          </div>
-        </div>
-      )}
+        {/* AUSSEN probe row (external sensor) — shown inline when present */}
+        {hasOut && (
+          <>
+            <BigStat
+              label="AUSSEN TEMP"
+              value={s.outTemp}
+              unit="°C"
+              precision={1}
+              trend={trend(s.outTemp, prev?.outTemp)}
+            />
+            <BigStat
+              label="AUSSEN FEUCHT"
+              value={s.outHumidity}
+              unit="%"
+              precision={1}
+              trend={trend(s.outHumidity, prev?.outHumidity)}
+            />
+            <BigStat
+              label="AUSSEN VPD"
+              value={s.outVpd}
+              unit="kPa"
+              precision={2}
+              trend={trend(s.outVpd, prev?.outVpd)}
+            />
+          </>
+        )}
+      </div>
 
       {/* Divider */}
       <div className="h-px bg-line my-5" />
@@ -360,35 +350,6 @@ function ControllerCard({
       )}
     </div>
   );
-}
-
-/** Heuristically find sensor-like values in the raw deviceInfo that we
- *  don't already expose as INNEN or AUSSEN. */
-function findExtraSensors(info: Record<string, unknown>): Array<{ key: string; value: number }> {
-  const known = new Set([
-    "temperature",
-    "humidity",
-    "vpdnums",
-    "co2",
-    "outTemperature",
-    "outHumidity",
-    "outVpdnums",
-    "ports",
-    "offlineTime",
-    "updateTime",
-  ]);
-  const out: Array<{ key: string; value: number }> = [];
-  for (const [k, v] of Object.entries(info)) {
-    if (known.has(k)) continue;
-    if (typeof v !== "number" || !Number.isFinite(v)) continue;
-    if (!/temp|humid|vpd|co2|probe|ext|out|two|sub/i.test(k)) continue;
-    // Normalize using the same auto-scaling heuristic for display
-    let n = v;
-    const cutoff = /vpd/i.test(k) ? 6 : /humid/i.test(k) ? 110 : /co2/i.test(k) ? 3000 : 60;
-    for (let i = 0; i < 4 && n > cutoff; i++) n /= 10;
-    out.push({ key: k, value: +n.toFixed(2) });
-  }
-  return out.slice(0, 6);
 }
 
 /* ============ Raw data modal ============ */
