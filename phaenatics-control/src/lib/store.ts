@@ -25,7 +25,14 @@ import {
   loadConnection,
   persistConnection,
 } from "./connection";
-import { acListDevices, acSetPort, parseSensors } from "./acinfinity";
+import {
+  type AcController,
+  acListDevices,
+  acSetPort,
+  loadTypeToDeviceKind,
+  parseSensors,
+} from "./acinfinity";
+import { defaultLightConfig } from "./light";
 
 interface State {
   rooms: GrowRoom[];
@@ -91,6 +98,8 @@ interface State {
   clearResolvedAlerts: () => void;
   wipeAllAlerts: () => void;
 
+  importAcController: (ctrl: import("./acinfinity").AcController) => string;
+
   tick: () => void;
 }
 
@@ -104,6 +113,23 @@ const DAY_MS = 86_400_000;
 
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
+}
+
+function kindLabelDe(k: ReturnType<typeof loadTypeToDeviceKind>): string {
+  return (
+    {
+      fan: "Lüfter",
+      intake: "Zuluft",
+      exhaust: "Abluft",
+      light: "Licht",
+      humidifier: "Befeuchter",
+      dehumidifier: "Entfeuchter",
+      heater: "Heizung",
+      ac: "Klima",
+      co2: "CO₂",
+      pump: "Pumpe",
+    } as const
+  )[k];
 }
 
 function loadRooms(): GrowRoom[] | null {
@@ -1035,6 +1061,94 @@ export const useStore = create<State>((set, get) => ({
       persistAudit(audit);
       return { alerts: [], audit };
     }),
+
+  importAcController: (ctrl: AcController) => {
+    const existingByName = get().rooms.find((r) => r.name === (ctrl.devName || `AC ${ctrl.devId}`));
+    const roomId = existingByName?.id ?? get().addRoom({
+      name: ctrl.devName || `AC Controller ${ctrl.devId}`,
+      kind: "standard",
+      stage: "flowering",
+      harvestInDays: 63,
+    });
+
+    const ports = ctrl.deviceInfo.ports ?? [];
+    const sensors = parseSensors(ctrl.deviceInfo);
+
+    set((s) => {
+      const now = Date.now();
+      const newPairings = [...s.connection.pairings];
+      const newRoomSensors = s.connection.roomSensors.filter((rs) => rs.roomId !== roomId);
+      newRoomSensors.push({ roomId, acDevId: ctrl.devId });
+
+      const rooms = s.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        const importedDevices = ports.map((p) => {
+          const kind = loadTypeToDeviceKind(p.loadType);
+          const id = `d-${Math.random().toString(36).slice(2, 8)}`;
+          const name =
+            p.portName && p.portName.trim().length > 0
+              ? p.portName
+              : `${kindLabelDe(kind)} · Port ${p.port}`;
+          const dev = {
+            id,
+            type: kind,
+            name,
+            port: p.port,
+            on: p.loadState === 1 || p.modeType !== 0,
+            level: p.speak ?? 0,
+            mode: (p.modeType === 2
+              ? "auto"
+              : p.modeType === 3
+                ? "schedule"
+                : p.modeType === 0
+                  ? "off"
+                  : "manual") as "auto" | "schedule" | "off" | "manual",
+            ...(kind === "light"
+              ? {
+                  lightConfig: defaultLightConfig("flower", 240),
+                  scheduleOn: "08:00",
+                  scheduleOff: "20:00",
+                }
+              : {}),
+          };
+          newPairings.push({
+            appDeviceId: id,
+            acDevId: ctrl.devId,
+            acPort: p.port,
+            roomId,
+          });
+          return dev;
+        });
+        return {
+          ...r,
+          temp: sensors.temp ?? r.temp,
+          humidity: sensors.humidity ?? r.humidity,
+          vpd: sensors.vpd ?? r.vpd,
+          co2: sensors.co2 ?? r.co2,
+          devices: importedDevices.length ? importedDevices : r.devices,
+        };
+      });
+
+      const connection = {
+        ...s.connection,
+        pairings: newPairings,
+        roomSensors: newRoomSensors,
+      };
+      persist(rooms);
+      persistConnection(connection);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "AC-Infinity-Controller importiert", {
+          roomName: ctrl.devName || `AC ${ctrl.devId}`,
+          details: `${ports.length} Ports`,
+        }),
+      );
+      persistAudit(audit);
+      void now;
+      return { rooms, connection, audit };
+    });
+    return roomId;
+  },
 
   tick: () =>
     set((s) => {
