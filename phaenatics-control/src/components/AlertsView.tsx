@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { AlertTriangle, Check, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Trash2 } from "lucide-react";
 import { useStore } from "../lib/store";
 import type { Alert } from "../lib/types";
 import { metricLabel, metricUnit } from "../lib/alerts";
@@ -8,6 +8,7 @@ export function AlertsView() {
   const alerts = useStore((s) => s.alerts);
   const rooms = useStore((s) => s.rooms);
   const ack = useStore((s) => s.acknowledgeAlert);
+  const ackAll = useStore((s) => s.acknowledgeAllAlerts);
   const clear = useStore((s) => s.clearResolvedAlerts);
   const selectRoom = useStore((s) => s.selectRoom);
 
@@ -24,6 +25,7 @@ export function AlertsView() {
 
   const active = sorted.filter((a) => !a.endedAt);
   const resolved = sorted.filter((a) => a.endedAt);
+  const unackActive = active.filter((a) => !a.acknowledged).length;
 
   return (
     <div className="px-4 md:px-6 py-6 space-y-6">
@@ -34,12 +36,20 @@ export function AlertsView() {
             {active.length} aktiv · {resolved.length} aufgelöst
           </p>
         </div>
-        {resolved.length > 0 && (
-          <button onClick={clear} className="btn">
-            <Trash2 className="size-4" />
-            Aufgelöste löschen
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {unackActive > 0 && (
+            <button onClick={ackAll} className="btn btn-primary">
+              <CheckCheck className="size-4" />
+              Alle bestätigen ({unackActive})
+            </button>
+          )}
+          {resolved.length > 0 && (
+            <button onClick={clear} className="btn">
+              <Trash2 className="size-4" />
+              Aufgelöste löschen
+            </button>
+          )}
+        </div>
       </section>
 
       {active.length === 0 && (
