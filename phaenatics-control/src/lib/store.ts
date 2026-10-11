@@ -634,7 +634,7 @@ export const useStore = create<State>((set, get) => ({
         }),
       );
       persistAudit(audit);
-      // Forward to AC Infinity if the device is paired
+      // Forward to AC Infinity if the device is paired. Surface failures.
       const pair = s.connection.pairings.find((p) => p.appDeviceId === deviceId);
       if (pair && s.connection.ac) {
         acSetPort({
@@ -644,9 +644,13 @@ export const useStore = create<State>((set, get) => ({
           port: pair.acPort,
           modeType: dev?.on ? 0 : 1, // flipped sense (0=off, 1=on)
           speak: dev?.level,
-        }).catch(() => {
-          /* surface via connectionError on next poll */
-        });
+        })
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({
+              connectionError: `Hardware-Schreib-Fehler (toggle): ${String(e)}`,
+            }),
+          );
       }
       persistAudit(audit);
       return { rooms, audit };
@@ -685,7 +689,13 @@ export const useStore = create<State>((set, get) => ({
           port: pair.acPort,
           speak: level,
           modeType: 1,
-        }).catch(() => undefined);
+        })
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({
+              connectionError: `Hardware-Schreib-Fehler (level): ${String(e)}`,
+            }),
+          );
       }
       return { rooms, audit };
     }),
