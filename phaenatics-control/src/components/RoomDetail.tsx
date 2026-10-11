@@ -7,6 +7,7 @@ import { TargetEditor } from "./TargetEditor";
 import { CropSteeringView } from "./CropSteeringView";
 import { RoomJournal } from "./RoomJournal";
 import { RoomMetaEditor } from "./RoomMetaEditor";
+import { CombinedChart } from "./CombinedChart";
 import { stageLabel, stageColor, kindLabel, kindColor } from "../lib/labels";
 
 export function RoomDetail() {
@@ -103,6 +104,10 @@ export function RoomDetail() {
         <div className="lg:col-span-2">
           <TargetEditor room={room} />
         </div>
+      </section>
+
+      <section>
+        <CombinedChart data={room.history} />
       </section>
 
       <section>

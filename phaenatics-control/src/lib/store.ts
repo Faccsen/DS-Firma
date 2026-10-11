@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type {
   Alert,
+  AuditCategory,
+  AuditEvent,
   AutomationRule,
   CropSteering,
   Device,
@@ -21,8 +23,11 @@ import { reconcileAlerts } from "./alerts";
 interface State {
   rooms: GrowRoom[];
   alerts: Alert[];
+  audit: AuditEvent[];
   activeRoomId: string;
   tickEnabled: boolean;
+
+  clearAudit: () => void;
 
   selectRoom: (id: string) => void;
   setTick: (on: boolean) => void;
@@ -74,6 +79,8 @@ interface State {
 
 const STORAGE_KEY = "phaenatics-rooms-v3";
 const ALERTS_KEY = "phaenatics-alerts-v1";
+const AUDIT_KEY = "phaenatics-audit-v1";
+const AUDIT_CAP = 500;
 const HISTORY_CAP = 24 * 4 + 4;
 const IRRIG_HISTORY_CAP = 24 * 12 + 2;
 const DAY_MS = 86_400_000;
@@ -103,6 +110,54 @@ function loadAlerts(): Alert[] {
   } catch {
     return [];
   }
+}
+function loadAudit(): AuditEvent[] {
+  try {
+    const raw = localStorage.getItem(AUDIT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as AuditEvent[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function persistAudit(a: AuditEvent[]) {
+  try {
+    localStorage.setItem(AUDIT_KEY, JSON.stringify(a.slice(-AUDIT_CAP)));
+  } catch {
+    /* ignore */
+  }
+}
+function auditEntry(
+  category: AuditCategory,
+  action: string,
+  opts: { roomName?: string; deviceName?: string; details?: string } = {},
+): AuditEvent {
+  return {
+    id: `au-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    t: Date.now(),
+    category,
+    action,
+    ...opts,
+  };
+}
+
+/** Dedup consecutive identical slider-like events within 30s. */
+function appendAudit(audit: AuditEvent[], e: AuditEvent): AuditEvent[] {
+  const last = audit[audit.length - 1];
+  if (
+    last &&
+    last.category === e.category &&
+    last.action === e.action &&
+    last.roomName === e.roomName &&
+    last.deviceName === e.deviceName &&
+    e.t - last.t < 30_000
+  ) {
+    const next = audit.slice(0, -1);
+    next.push({ ...e, details: e.details ?? last.details });
+    return next.slice(-AUDIT_CAP);
+  }
+  return [...audit, e].slice(-AUDIT_CAP);
 }
 function persist(rooms: GrowRoom[]) {
   try {
@@ -333,35 +388,59 @@ function tickDayCounter(room: GrowRoom): GrowRoom {
 export const useStore = create<State>((set) => ({
   rooms: loadRooms() ?? seedRooms,
   alerts: loadAlerts(),
+  audit: loadAudit(),
   activeRoomId: (loadRooms() ?? seedRooms)[0].id,
   tickEnabled: true,
 
   selectRoom: (id) => set({ activeRoomId: id }),
   setTick: (on) => set({ tickEnabled: on }),
 
+  clearAudit: () =>
+    set(() => {
+      persistAudit([]);
+      return { audit: [] };
+    }),
+
   addRoom: (opts) => {
     const room = createRoom(opts);
     set((s) => {
       const rooms = [...s.rooms, room];
       persist(rooms);
-      return { rooms, activeRoomId: room.id };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("room", "Raum angelegt", { roomName: room.name, details: `${room.kind} · ${room.stage}` }),
+      );
+      persistAudit(audit);
+      return { rooms, activeRoomId: room.id, audit };
     });
     return room.id;
   },
 
   renameRoom: (id, name) =>
     set((s) => {
+      const src = s.rooms.find((r) => r.id === id);
       const rooms = s.rooms.map((r) => (r.id === id ? { ...r, name } : r));
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("room", "Umbenannt", { roomName: name, details: src ? `${src.name} → ${name}` : undefined }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   deleteRoom: (id) =>
     set((s) => {
+      const src = s.rooms.find((r) => r.id === id);
       const rooms = s.rooms.filter((r) => r.id !== id);
       const activeRoomId = s.activeRoomId === id ? rooms[0]?.id ?? "" : s.activeRoomId;
       persist(rooms);
-      return { rooms, activeRoomId };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("room", "Raum gelöscht", { roomName: src?.name }),
+      );
+      persistAudit(audit);
+      return { rooms, activeRoomId, audit };
     }),
 
   duplicateRoom: (id) =>
@@ -383,18 +462,35 @@ export const useStore = create<State>((set) => ({
       };
       const rooms = [...s.rooms, copy];
       persist(rooms);
-      return { rooms, activeRoomId: copy.id };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("room", "Raum dupliziert", { roomName: copy.name, details: `Quelle: ${src.name}` }),
+      );
+      persistAudit(audit);
+      return { rooms, activeRoomId: copy.id, audit };
     }),
 
   setRoomMeta: (id, patch) =>
     set((s) => {
+      const src = s.rooms.find((r) => r.id === id);
       const rooms = s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r));
       persist(rooms);
-      return { rooms };
+      const parts: string[] = [];
+      if (patch.stage) parts.push(`Phase → ${patch.stage}`);
+      if (patch.plantedAt !== undefined) parts.push("Pflanzdatum gesetzt");
+      if (patch.harvestInDays !== undefined) parts.push(`Ernte-Ziel ${patch.harvestInDays}d`);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("room", "Lebenszyklus angepasst", { roomName: src?.name, details: parts.join(" · ") }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   toggleDevice: (roomId, deviceId) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId
           ? r
@@ -406,11 +502,21 @@ export const useStore = create<State>((set) => ({
             },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", dev?.on ? "Gerät aus" : "Gerät an", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   setDeviceLevel: (roomId, deviceId, level) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId
           ? r
@@ -422,22 +528,44 @@ export const useStore = create<State>((set) => ({
             },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Leistung geändert", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+          details: `${level}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   setDeviceMode: (roomId, deviceId, mode) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId
           ? r
           : { ...r, devices: r.devices.map((d) => (d.id === deviceId ? { ...d, mode } : d)) },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Modus geändert", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+          details: mode,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   setDeviceSchedule: (roomId, deviceId, patch) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId
           ? r
@@ -447,11 +575,22 @@ export const useStore = create<State>((set) => ({
             },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Zeitplan geändert", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+          details: `${patch.scheduleOn ?? dev?.scheduleOn ?? "?"} → ${patch.scheduleOff ?? dev?.scheduleOff ?? "?"}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   updateLightConfig: (roomId, deviceId, patch) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId) return r;
         return {
@@ -463,11 +602,29 @@ export const useStore = create<State>((set) => ({
         };
       });
       persist(rooms);
-      return { rooms };
+      const parts: string[] = [];
+      if (patch.ppfdTarget !== undefined) parts.push(`PPFD → ${patch.ppfdTarget}`);
+      if (patch.wattage !== undefined) parts.push(`${patch.wattage} W`);
+      if (patch.photoperiod) parts.push(`${patch.photoperiod.onH}/${patch.photoperiod.offH}`);
+      if (patch.sunriseMin !== undefined) parts.push(`Sunrise ${patch.sunriseMin}m`);
+      if (patch.sunsetMin !== undefined) parts.push(`Sunset ${patch.sunsetMin}m`);
+      if (patch.spectrum) parts.push("Spektrum");
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("light", "Lampe konfiguriert", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+          details: parts.join(" · ") || "aktualisiert",
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   applyLightScene: (roomId, deviceId, scene) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId) return r;
         return {
@@ -491,76 +648,133 @@ export const useStore = create<State>((set) => ({
         };
       });
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("light", "Szene gewechselt", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+          details: scene,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   setTarget: (roomId, key, bounds) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId ? r : { ...r, targets: { ...r.targets, [key]: bounds } },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("target", "Zielbereich geändert", {
+          roomName: room?.name,
+          details: `${key} ${bounds.min}–${bounds.max}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   toggleRule: (roomId, ruleId) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const rule = room?.rules.find((r) => r.id === ruleId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId
           ? r
           : {
               ...r,
-              rules: r.rules.map((rule) =>
-                rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule,
+              rules: r.rules.map((rr) =>
+                rr.id === ruleId ? { ...rr, enabled: !rr.enabled } : rr,
               ),
             },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("rule", rule?.enabled ? "Regel deaktiviert" : "Regel aktiviert", {
+          roomName: room?.name,
+          details: rule?.label,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   addRule: (roomId, rule) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
       const rooms = s.rooms.map((r) =>
         r.id !== roomId
           ? r
           : { ...r, rules: [...r.rules, { ...rule, id: `r-${Math.random().toString(36).slice(2, 8)}` }] },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("rule", "Regel hinzugefügt", { roomName: room?.name, details: rule.label }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   deleteRule: (roomId, ruleId) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const rule = room?.rules.find((r) => r.id === ruleId);
       const rooms = s.rooms.map((r) =>
-        r.id !== roomId ? r : { ...r, rules: r.rules.filter((rule) => rule.id !== ruleId) },
+        r.id !== roomId ? r : { ...r, rules: r.rules.filter((rr) => rr.id !== ruleId) },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("rule", "Regel gelöscht", { roomName: room?.name, details: rule?.label }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   setSteeringStrategy: (roomId, strategy) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId || !r.cropSteering) return r;
         return { ...r, cropSteering: { ...r.cropSteering, ...strategyPreset(strategy) } };
       });
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("steering", "Strategie gewechselt", { roomName: room?.name, details: strategy }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   updateSteering: (roomId, patch) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId || !r.cropSteering) return r;
         return { ...r, cropSteering: { ...r.cropSteering, ...patch } };
       });
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("steering", "Crop Steering angepasst", {
+          roomName: room?.name,
+          details: Object.keys(patch).join(", "),
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   triggerShot: (roomId) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId || !r.cropSteering) return r;
         const cs = r.cropSteering;
@@ -582,11 +796,17 @@ export const useStore = create<State>((set) => ({
         };
       });
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("steering", "Manueller Shot", { roomName: room?.name }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   addJournal: (roomId, tag, text) =>
     set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
       const entry: JournalEntry = {
         id: `j-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         t: Date.now(),
@@ -597,7 +817,15 @@ export const useStore = create<State>((set) => ({
         r.id !== roomId ? r : { ...r, journal: [entry, ...r.journal].slice(0, 200) },
       );
       persist(rooms);
-      return { rooms };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("journal", "Journal-Eintrag", {
+          roomName: room?.name,
+          details: `${tag} · ${text.slice(0, 60)}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
     }),
 
   deleteJournal: (roomId, entryId) =>
@@ -611,16 +839,32 @@ export const useStore = create<State>((set) => ({
 
   acknowledgeAlert: (id) =>
     set((s) => {
+      const al = s.alerts.find((a) => a.id === id);
+      const room = s.rooms.find((r) => r.id === al?.roomId);
       const alerts = s.alerts.map((a) => (a.id === id ? { ...a, acknowledged: true } : a));
       persistAlerts(alerts);
-      return { alerts };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("alert", "Alarm bestätigt", {
+          roomName: room?.name,
+          details: al?.metric,
+        }),
+      );
+      persistAudit(audit);
+      return { alerts, audit };
     }),
 
   clearResolvedAlerts: () =>
     set((s) => {
+      const n = s.alerts.filter((a) => a.endedAt).length;
       const alerts = s.alerts.filter((a) => !a.endedAt);
       persistAlerts(alerts);
-      return { alerts };
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("alert", "Aufgelöste Alarme gelöscht", { details: `${n} entfernt` }),
+      );
+      persistAudit(audit);
+      return { alerts, audit };
     }),
 
   tick: () =>

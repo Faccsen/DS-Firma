@@ -46,7 +46,7 @@ export default function App() {
     lights: "Alle Lampen aller Räume",
     alerts: `${activeAlerts} aktiv`,
     automation: "Sensor-Regeln",
-    history: "Sensorverlauf",
+    history: "Was wurde wann geändert",
     settings: "App & Geräteoptionen",
   };
 

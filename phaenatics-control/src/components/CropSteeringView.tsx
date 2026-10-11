@@ -22,6 +22,7 @@ import { DeviceControl } from "./DeviceControl";
 import { IrrigationChart } from "./IrrigationChart";
 import { RoomJournal } from "./RoomJournal";
 import { RoomMetaEditor } from "./RoomMetaEditor";
+import { CombinedChart } from "./CombinedChart";
 
 const PHASES: IrrigationPhase[] = ["P0", "P1", "P2", "P3"];
 const STRATEGIES: SteeringStrategy[] = ["vegetative", "transition", "generative"];
@@ -153,6 +154,10 @@ export function CropSteeringView({ room }: { room: GrowRoom }) {
           icon={Sparkles}
           precision={0}
         />
+      </section>
+
+      <section>
+        <CombinedChart data={room.history} title="Klima · letzte 24h" />
       </section>
 
       <section>
