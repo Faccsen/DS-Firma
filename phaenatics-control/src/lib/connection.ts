@@ -1,25 +1,15 @@
 // Device-pairing state. Each pairing carries a `source` so the store can
-// route reads and writes to the right backend. AC Infinity and Home
-// Assistant can be active at the same time — the user picks per device /
-// per room which backend to use. Credentials never leave this device.
+// route reads and writes to the right backend. Multiple backends can be
+// active at the same time — the user picks per device / per room which
+// backend to use. Credentials never leave this device.
 
-export type ConnectionSource = "acinfinity" | "ha" | "tapo" | "tuya";
+export type ConnectionSource = "acinfinity" | "tapo" | "tuya";
 
 export interface AcCredentials {
   email: string;
   token: string;
   userId: string;
   nickname?: string;
-  connectedAt: number;
-}
-
-export interface HaCredentials {
-  /** Full Home Assistant URL incl. protocol, e.g. "https://ha.phaenatics.de" */
-  baseUrl: string;
-  /** Long-Lived Access Token from HA Profile → Security */
-  token: string;
-  verified?: boolean;
-  version?: string;
   connectedAt: number;
 }
 
@@ -53,8 +43,6 @@ export interface DevicePairing {
   // AC Infinity target
   acDevId?: string;
   acPort?: number;
-  // Home Assistant target
-  haEntityId?: string;
   // TP-Link Tapo target
   tapoDeviceId?: string;
   tapoAppServerUrl?: string;
@@ -68,18 +56,12 @@ export interface RoomSensorPairing {
   roomId: string;
   // AC Infinity: single controller supplies all 4 sensors
   acDevId?: string;
-  // Home Assistant: one HA entity per sensor
-  haTempEntity?: string;
-  haHumidityEntity?: string;
-  haVpdEntity?: string;
-  haCo2Entity?: string;
 }
 
 export interface ConnectionConfig {
   /** Primary mode shown in UI chips. "mixed" when ≥2 backends are set up. */
-  mode: "sim" | "acinfinity" | "homeassistant" | "tapo" | "tuya" | "mixed";
+  mode: "sim" | "acinfinity" | "tapo" | "tuya" | "mixed";
   ac?: AcCredentials;
-  ha?: HaCredentials;
   tapo?: TapoCredentials;
   tuya?: TuyaCredentials;
   pairings: DevicePairing[];
@@ -87,30 +69,40 @@ export interface ConnectionConfig {
   pollingSec: number;
 }
 
-const KEY = "phaenatics-connection-v2";
+const KEY = "phaenatics-connection-v3";
 
 export function loadConnection(): ConnectionConfig {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) {
-      // Migrate from v1 if present
-      const v1 = localStorage.getItem("phaenatics-connection-v1");
-      if (v1) {
+      // Migrate from v2 if present
+      const v2 = localStorage.getItem("phaenatics-connection-v2");
+      if (v2) {
         try {
-          const old = JSON.parse(v1) as {
+          const old = JSON.parse(v2) as {
             mode?: string;
             ac?: AcCredentials;
+            tapo?: TapoCredentials;
+            tuya?: TuyaCredentials;
             pairings?: Array<Record<string, unknown>>;
             roomSensors?: Array<Record<string, unknown>>;
             pollingSec?: number;
           };
+          const mode =
+            old.mode === "acinfinity" || old.mode === "tapo" || old.mode === "tuya" || old.mode === "mixed"
+              ? (old.mode as ConnectionConfig["mode"])
+              : "sim";
           return {
-            mode: (old.mode === "acinfinity" ? "acinfinity" : "sim") as ConnectionConfig["mode"],
+            mode,
             ac: old.ac,
-            pairings: (old.pairings ?? []).map((p) => ({ source: "acinfinity", ...(p as object) }) as DevicePairing),
-            roomSensors: (old.roomSensors ?? []).map(
-              (s) => ({ source: "acinfinity", ...(s as object) }) as RoomSensorPairing,
-            ),
+            tapo: old.tapo,
+            tuya: old.tuya,
+            pairings: (old.pairings ?? []).filter(
+              (p) => (p as { source?: string }).source !== "ha",
+            ) as unknown as DevicePairing[],
+            roomSensors: (old.roomSensors ?? []).filter(
+              (s) => (s as { source?: string }).source !== "ha",
+            ) as unknown as RoomSensorPairing[],
             pollingSec: old.pollingSec ?? 30,
           };
         } catch {
@@ -123,7 +115,6 @@ export function loadConnection(): ConnectionConfig {
     return {
       mode: parsed.mode ?? "sim",
       ac: parsed.ac,
-      ha: parsed.ha,
       tapo: parsed.tapo,
       tuya: parsed.tuya,
       pairings: parsed.pairings ?? [],
@@ -149,11 +140,9 @@ export function defaultConnection(): ConnectionConfig {
 
 /** Derive the effective mode label from which backends are set up. */
 export function effectiveMode(cfg: ConnectionConfig): ConnectionConfig["mode"] {
-  const count =
-    (cfg.ac ? 1 : 0) + (cfg.ha ? 1 : 0) + (cfg.tapo ? 1 : 0) + (cfg.tuya ? 1 : 0);
+  const count = (cfg.ac ? 1 : 0) + (cfg.tapo ? 1 : 0) + (cfg.tuya ? 1 : 0);
   if (count > 1) return "mixed";
   if (cfg.ac) return "acinfinity";
-  if (cfg.ha) return "homeassistant";
   if (cfg.tapo) return "tapo";
   if (cfg.tuya) return "tuya";
   return "sim";

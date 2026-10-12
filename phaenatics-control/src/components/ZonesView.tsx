@@ -14,6 +14,14 @@ export function ZonesView({ onOpenRoom }: { onOpenRoom: () => void }) {
         <p className="text-[12px] text-muted">{rooms.length} Räume · Tippe für Details</p>
       </section>
 
+      {rooms.length === 0 && (
+        <div className="card p-6 text-center text-muted text-sm">
+          Noch keine Zonen angelegt. Lege im Dashboard einen Raum an oder
+          verbinde eine Cloud (AC Infinity / Tapo / SmartLife) in den
+          Einstellungen.
+        </div>
+      )}
+
       <div className="space-y-1.5">
         {rooms.map((r) => {
           const alerts = activeAlerts(r);
