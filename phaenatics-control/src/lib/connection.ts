@@ -3,7 +3,7 @@
 // Assistant can be active at the same time — the user picks per device /
 // per room which backend to use. Credentials never leave this device.
 
-export type ConnectionSource = "acinfinity" | "ha" | "tapo";
+export type ConnectionSource = "acinfinity" | "ha" | "tapo" | "tuya";
 
 export interface AcCredentials {
   email: string;
@@ -30,6 +30,20 @@ export interface TapoCredentials {
   connectedAt: number;
 }
 
+export interface TuyaCredentials {
+  region: "eu" | "us" | "us-east" | "cn" | "in";
+  accessId: string;
+  secret: string;
+  /** Access token obtained via /v1.0/token?grant_type=1. Short-lived. */
+  accessToken: string;
+  refreshToken?: string;
+  /** SmartLife user id (linked to the Tuya Cloud Project). */
+  uid: string;
+  uidNickname?: string;
+  expiresAt: number;
+  connectedAt: number;
+}
+
 export interface DevicePairing {
   source: ConnectionSource;
   /** Phaenatics app Device.id */
@@ -44,6 +58,8 @@ export interface DevicePairing {
   // TP-Link Tapo target
   tapoDeviceId?: string;
   tapoAppServerUrl?: string;
+  // Tuya (SmartLife) target
+  tuyaDeviceId?: string;
 }
 
 export interface RoomSensorPairing {
@@ -61,10 +77,11 @@ export interface RoomSensorPairing {
 
 export interface ConnectionConfig {
   /** Primary mode shown in UI chips. "mixed" when ≥2 backends are set up. */
-  mode: "sim" | "acinfinity" | "homeassistant" | "tapo" | "mixed";
+  mode: "sim" | "acinfinity" | "homeassistant" | "tapo" | "tuya" | "mixed";
   ac?: AcCredentials;
   ha?: HaCredentials;
   tapo?: TapoCredentials;
+  tuya?: TuyaCredentials;
   pairings: DevicePairing[];
   roomSensors: RoomSensorPairing[];
   pollingSec: number;
@@ -108,6 +125,7 @@ export function loadConnection(): ConnectionConfig {
       ac: parsed.ac,
       ha: parsed.ha,
       tapo: parsed.tapo,
+      tuya: parsed.tuya,
       pairings: parsed.pairings ?? [],
       roomSensors: parsed.roomSensors ?? [],
       pollingSec: parsed.pollingSec ?? 30,
@@ -131,10 +149,12 @@ export function defaultConnection(): ConnectionConfig {
 
 /** Derive the effective mode label from which backends are set up. */
 export function effectiveMode(cfg: ConnectionConfig): ConnectionConfig["mode"] {
-  const count = (cfg.ac ? 1 : 0) + (cfg.ha ? 1 : 0) + (cfg.tapo ? 1 : 0);
+  const count =
+    (cfg.ac ? 1 : 0) + (cfg.ha ? 1 : 0) + (cfg.tapo ? 1 : 0) + (cfg.tuya ? 1 : 0);
   if (count > 1) return "mixed";
   if (cfg.ac) return "acinfinity";
   if (cfg.ha) return "homeassistant";
   if (cfg.tapo) return "tapo";
+  if (cfg.tuya) return "tuya";
   return "sim";
 }

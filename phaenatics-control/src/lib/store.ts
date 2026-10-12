@@ -51,6 +51,16 @@ import {
   tapoSetBrightness,
   tapoSetRelay,
 } from "./tapo";
+import {
+  type TuyaDevice,
+  tuyaBrightness,
+  tuyaCommand,
+  tuyaDeviceKind,
+  tuyaGetToken,
+  tuyaIsOn,
+  tuyaListDevices,
+  tuyaListUsers,
+} from "./tuya";
 import { defaultLightConfig } from "./light";
 
 interface State {
@@ -78,6 +88,16 @@ interface State {
   disconnectTapo: () => void;
   pollTapo: () => Promise<void>;
   importTapoDevice: (dev: TapoDevice, roomId?: string) => string;
+
+  connectTuya: (args: {
+    region: "eu" | "us" | "us-east" | "cn" | "in";
+    accessId: string;
+    secret: string;
+    uid?: string;
+  }) => Promise<void>;
+  disconnectTuya: () => void;
+  pollTuya: () => Promise<void>;
+  importTuyaDevice: (dev: TuyaDevice, roomId?: string) => string;
 
   selectRoom: (id: string) => void;
   setTick: (on: boolean) => void;
@@ -783,6 +803,183 @@ export const useStore = create<State>((set, get) => ({
     return deviceId;
   },
 
+  connectTuya: async ({ region, accessId, secret, uid }) => {
+    try {
+      const token = await tuyaGetToken({ region, accessId, secret });
+      // If no uid passed, pick the first linked user automatically.
+      let finalUid = uid;
+      let nickname: string | undefined;
+      if (!finalUid) {
+        const users = await tuyaListUsers({
+          region,
+          accessId,
+          secret,
+          accessToken: token.access_token,
+        });
+        if (users.length === 0) {
+          throw new Error(
+            "Kein SmartLife-Account mit dem Tuya-Projekt verknüpft. In Tuya IoT → Dein Projekt → Devices → Link Tuya App Account per QR scannen.",
+          );
+        }
+        finalUid = users[0].uid;
+        nickname = users[0].nickname;
+      }
+      const connection: ConnectionConfig = {
+        ...get().connection,
+        tuya: {
+          region,
+          accessId,
+          secret,
+          accessToken: token.access_token,
+          refreshToken: token.refresh_token,
+          uid: finalUid,
+          uidNickname: nickname,
+          expiresAt: Date.now() + token.expire_time * 1000,
+          connectedAt: Date.now(),
+        },
+      };
+      persistConnection(connection);
+      set({ connection, connectionStatus: "idle", connectionError: undefined });
+    } catch (e) {
+      set({ connectionError: `Tuya-Login: ${String(e)}` });
+      throw e;
+    }
+  },
+
+  disconnectTuya: () =>
+    set((s) => {
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        tuya: undefined,
+        pairings: s.connection.pairings.filter((p) => p.source !== "tuya"),
+        roomSensors: s.connection.roomSensors.filter((rs) => rs.source !== "tuya"),
+      };
+      persistConnection(connection);
+      return { connection, connectionStatus: "idle", connectionError: undefined };
+    }),
+
+  pollTuya: async () => {
+    const { connection, rooms } = get();
+    if (!connection.tuya) return;
+
+    // Refresh token if less than 5 min of life left
+    if (connection.tuya.expiresAt - Date.now() < 5 * 60 * 1000) {
+      try {
+        const t = await tuyaGetToken({
+          region: connection.tuya.region,
+          accessId: connection.tuya.accessId,
+          secret: connection.tuya.secret,
+        });
+        const next = {
+          ...connection,
+          tuya: {
+            ...connection.tuya,
+            accessToken: t.access_token,
+            refreshToken: t.refresh_token,
+            expiresAt: Date.now() + t.expire_time * 1000,
+          },
+        };
+        persistConnection(next);
+        set({ connection: next });
+      } catch (e) {
+        set({ connectionStatus: "error", connectionError: `Tuya Token-Refresh: ${String(e)}` });
+        return;
+      }
+    }
+
+    set({ connectionStatus: "polling" });
+    try {
+      const devices = await tuyaListDevices({
+        region: get().connection.tuya!.region,
+        accessId: get().connection.tuya!.accessId,
+        secret: get().connection.tuya!.secret,
+        accessToken: get().connection.tuya!.accessToken,
+        uid: get().connection.tuya!.uid,
+      });
+      const byId = new Map(devices.map((d) => [d.id, d]));
+
+      const updated = rooms.map((r) => {
+        const roomPairs = connection.pairings.filter(
+          (p) => p.source === "tuya" && p.roomId === r.id,
+        );
+        if (!roomPairs.length) return r;
+        return {
+          ...r,
+          devices: r.devices.map((d) => {
+            const pair = roomPairs.find((p) => p.appDeviceId === d.id);
+            if (!pair?.tuyaDeviceId) return d;
+            const live = byId.get(pair.tuyaDeviceId);
+            if (!live) return d;
+            const on = tuyaIsOn(live);
+            const brightness = tuyaBrightness(live);
+            return {
+              ...d,
+              on: on ?? d.on,
+              level: brightness ?? d.level,
+            };
+          }),
+        };
+      });
+      persist(updated);
+      set({
+        rooms: updated,
+        connectionStatus: "idle",
+        connectionError: undefined,
+        lastPollAt: Date.now(),
+      });
+    } catch (e) {
+      set({ connectionStatus: "error", connectionError: `Tuya: ${String(e)}` });
+    }
+  },
+
+  importTuyaDevice: (dev, maybeRoomId) => {
+    const roomId =
+      maybeRoomId ??
+      get().addRoom({ name: dev.name, kind: "standard", stage: "flowering" });
+    const kind = tuyaDeviceKind(dev);
+    const deviceId = `d-${Math.random().toString(36).slice(2, 8)}`;
+
+    set((s) => {
+      const rooms = s.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        const device: Device = {
+          id: deviceId,
+          type: kind,
+          name: dev.name,
+          port: r.devices.length + 1,
+          on: tuyaIsOn(dev) ?? dev.online,
+          level: tuyaBrightness(dev) ?? (kind === "light" ? 80 : 100),
+          mode: "manual",
+        };
+        return { ...r, devices: [...r.devices, device] };
+      });
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        pairings: [
+          ...s.connection.pairings,
+          {
+            source: "tuya",
+            appDeviceId: deviceId,
+            roomId,
+            tuyaDeviceId: dev.id,
+          },
+        ],
+      };
+      persist(rooms);
+      persistConnection(connection);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "SmartLife-Gerät übernommen", {
+          roomName: rooms.find((r) => r.id === roomId)?.name,
+          details: `${dev.name} · ${dev.product_name}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, connection, audit };
+    });
+    return deviceId;
+  },
+
   pollAcInfinity: async () => {
     const { connection, rooms } = get();
     if (!connection.ac) return;
@@ -1000,6 +1197,21 @@ export const useStore = create<State>((set, get) => ({
           .catch((e) =>
             useStore.setState({ connectionError: `Tapo (toggle): ${String(e)}` }),
           );
+      } else if (pair?.source === "tuya" && s.connection.tuya && pair.tuyaDeviceId) {
+        // We don't know the exact switch code here without a device lookup —
+        // fall back to the common ones in order of likelihood.
+        tuyaCommand({
+          region: s.connection.tuya.region,
+          accessId: s.connection.tuya.accessId,
+          secret: s.connection.tuya.secret,
+          accessToken: s.connection.tuya.accessToken,
+          deviceId: pair.tuyaDeviceId,
+          commands: [{ code: "switch_1", value: newOn }],
+        })
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({ connectionError: `Tuya (toggle): ${String(e)}` }),
+          );
       }
       persistAudit(audit);
       return { rooms, audit };
@@ -1069,6 +1281,24 @@ export const useStore = create<State>((set, get) => ({
           .then(() => useStore.setState({ connectionError: undefined }))
           .catch((e) =>
             useStore.setState({ connectionError: `Tapo (level): ${String(e)}` }),
+          );
+      } else if (pair?.source === "tuya" && s.connection.tuya && pair.tuyaDeviceId) {
+        const type = (dev?.type ?? "fan") as string;
+        const commands =
+          type === "light"
+            ? [{ code: "bright_value_v2", value: Math.round(level * 10) }]
+            : [{ code: "switch_1", value: level > 0 }];
+        tuyaCommand({
+          region: s.connection.tuya.region,
+          accessId: s.connection.tuya.accessId,
+          secret: s.connection.tuya.secret,
+          accessToken: s.connection.tuya.accessToken,
+          deviceId: pair.tuyaDeviceId,
+          commands,
+        })
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({ connectionError: `Tuya (level): ${String(e)}` }),
           );
       }
       return { rooms, audit };
