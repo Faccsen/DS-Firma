@@ -162,16 +162,31 @@ export default async function handler(req: Request): Promise<Response> {
     try {
       const parsed = JSON.parse(text) as Envelope<unknown>;
       if (parsed.code !== 200) {
+        // Also surface the full field map we read + the writeBody so we
+        // can diff and spot the offending field in the browser.
+        const currentPreview: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(current)) {
+          if (typeof v === "object") {
+            currentPreview[k] = Array.isArray(v) ? `[array:${v.length}]` : "[object]";
+          } else {
+            currentPreview[k] = v;
+          }
+        }
+        const writePreview: Record<string, string> = {};
+        for (const [k, v] of writeBody.entries()) writePreview[k] = v;
         return json(
           {
             error: "write-settings-failed",
             code: parsed.code,
             msg: parsed.msg ?? "AC Infinity rejected the write",
-            sentFields: Array.from(writeBody.keys()),
             attempted: {
               modeType: p.modeType,
               speak: p.speak,
             },
+            readFields: Object.keys(current),
+            sentFields: Array.from(writeBody.keys()),
+            readValues: currentPreview,
+            sentValues: writePreview,
             rawFirstBytes: text.slice(0, 400),
           },
           parsed.code === 10000 ? 401 : 502,
