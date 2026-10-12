@@ -163,63 +163,15 @@ function lightDevice(opts: {
   };
 }
 
-export function defaultDevices(stage: GrowStage): Device[] {
-  const flower = stage === "flowering";
-  const seedling = stage === "seedling";
-  const scene: LightScene = seedling ? "seedling" : flower ? "flower" : "veg";
-  return [
-    { id: dId(), type: "intake", name: "Zuluft", port: 1, on: true, level: 4, mode: "auto" },
-    {
-      id: dId(),
-      type: "exhaust",
-      name: "Abluft",
-      port: 2,
-      on: true,
-      level: flower ? 7 : 5,
-      mode: "auto",
-    },
-    lightDevice({
-      name: flower ? "LED Panel 480W" : "LED Bar 240W",
-      port: 3,
-      scene,
-      wattage: flower ? 480 : 240,
-      level: flower ? 92 : 75,
-    }),
-    {
-      id: dId(),
-      type: flower ? "dehumidifier" : "humidifier",
-      name: flower ? "Dehumidifier" : "Humidifier",
-      port: 4,
-      on: flower,
-      level: flower ? 40 : 50,
-      mode: "auto",
-    },
-    { id: dId(), type: "fan", name: "Clip-Lüfter", port: 5, on: true, level: 3, mode: "manual" },
-  ];
-}
-
-export function defaultCropSteeringDevices(): Device[] {
-  return [
-    { id: dId(), type: "pump", name: "Dosing Pump A", port: 1, on: true, level: 60, mode: "auto" },
-    { id: dId(), type: "pump", name: "Dosing Pump B", port: 2, on: true, level: 60, mode: "auto" },
-    { id: dId(), type: "doser", name: "pH Down Doser", port: 3, on: true, level: 20, mode: "auto" },
-    lightDevice({
-      name: "LED Panel 600W",
-      port: 4,
-      scene: "flower",
-      wattage: 600,
-      level: 95,
-      scheduleOn: "07:00",
-    }),
-    { id: dId(), type: "exhaust", name: "Abluft", port: 5, on: true, level: 6, mode: "auto" },
-    { id: dId(), type: "dehumidifier", name: "Dehumidifier", port: 6, on: true, level: 45, mode: "auto" },
-    { id: dId(), type: "ac", name: "Mini Split AC", port: 7, on: true, level: 23, mode: "auto" },
-  ];
-}
-
+// Räume starten ab jetzt leer. Geräte legt der Nutzer über
+// „+ Gerät" (manuell oder aus einer verbundenen Cloud) selbst an.
 function dId() {
   return `d-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+// `lightDevice` wird vom Add-Device-Flow benötigt, sobald wir dort
+// einen Light-Preset-Shortcut anbieten. Export für andere Module.
+export { lightDevice };
 
 export function createRoom(opts: {
   name: string;
@@ -249,7 +201,7 @@ export function createRoom(opts: {
       humidity: { min: flower ? 40 : 55, max: flower ? 55 : 70 },
       vpd: vpdBand(stage),
     },
-    devices: kind === "cropsteering" ? defaultCropSteeringDevices() : defaultDevices(stage),
+    devices: [],
     rules: [],
     history: buildHistory(baseTemp, baseHum),
     journal: [],
