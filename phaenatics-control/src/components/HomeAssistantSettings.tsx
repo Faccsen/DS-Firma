@@ -26,8 +26,35 @@ export function HomeAssistantSettings() {
 
   const connected = !!connection.ha?.verified;
 
+  function validateUrl(raw: string): string | undefined {
+    const trimmed = raw.trim();
+    if (!trimmed) return "URL ist leer.";
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return "URL muss mit http:// oder https:// anfangen. Beispiel: https://home.phaenatics.de";
+    }
+    if (/@/.test(trimmed)) {
+      return "Das sieht nach einer E-Mail-Adresse aus. Hier gehört die Adresse deines Home-Assistant-Servers hin (z. B. https://home.phaenatics.de).";
+    }
+    try {
+      // eslint-disable-next-line no-new
+      new URL(trimmed);
+    } catch {
+      return "Ungültige URL.";
+    }
+    return undefined;
+  }
+
   async function doConnect() {
     setError(undefined);
+    const urlError = validateUrl(baseUrl);
+    if (urlError) {
+      setError(urlError);
+      return;
+    }
+    if (!token.trim()) {
+      setError("Access-Token fehlt.");
+      return;
+    }
     setBusy(true);
     try {
       await connect(baseUrl.trim(), token.trim());
@@ -35,7 +62,15 @@ export function HomeAssistantSettings() {
       setBaseUrl("");
       setToken("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // Niceify the common "server returned HTML not JSON" case
+      if (/<!doctype/i.test(msg) || /Unexpected token '<'/.test(msg)) {
+        setError(
+          `Die URL antwortet nicht wie ein Home-Assistant-Server (bekommt HTML statt JSON). Prüfe die URL — richtig wäre z. B. https://home.phaenatics.de ohne weitere Pfade.`,
+        );
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -107,17 +142,29 @@ export function HomeAssistantSettings() {
           <label className="block">
             <span className="stat-label">Home Assistant URL</span>
             <input
-              type="url"
+              type="text"
+              inputMode="url"
+              name="ha-base-url"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://home.phaenatics.de"
               className="mt-1 w-full card-2 px-3 py-2 text-sm text-fg outline-none focus:border-cream/40 font-mono text-[12px]"
             />
+            <span className="block mt-1 text-[11px] text-muted">
+              Nicht deine E-Mail — die Adresse unter der du HA im Browser aufrufst.
+            </span>
           </label>
           <label className="block">
             <span className="stat-label">Long-Lived Access Token</span>
             <input
               type="password"
+              name="ha-token"
+              autoComplete="off"
+              spellCheck={false}
               value={token}
               onChange={(e) => setToken(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !busy && doConnect()}
