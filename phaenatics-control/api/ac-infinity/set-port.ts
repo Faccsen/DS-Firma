@@ -95,130 +95,80 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // 2. Merge the user's requested changes onto the current record.
-  //    AC Infinity uses `onSpead` (sic — their misspelling of "on
-  //    speed") for the manual-on target. The port-list `speak` is
-  //    just the live mirror of the same field — do NOT send it as an
-  //    extra key.
+  //
+  // After seeing the real UIS Pro firmware field names (devHt/devHh
+  // not devTh/devHs, acitveTimerOn with a typo, atType co-existing
+  // with modeType, …) we drop the whitelist approach and use a
+  // tight BLACKLIST instead: send back virtually everything the GET
+  // gave us except a handful of known read-only fields. That's the
+  // only way to not drop the one odd-named field the backend wants.
+  //
+  // AC Infinity's SENSOR mode is driven by (activeHh=1, devHh=67 …)
+  // plus atType=2 or 3. To force a hard "off" we also set atType=0
+  // (= EIN/AUS tab in the AC app, manual mode) alongside modeType=0,
+  // because leaving atType in sensor/timer mode means the controller
+  // may re-enable the port on its own even after we requested off.
   const merged: Record<string, unknown> = { ...current };
   if (p.modeType != null) {
     merged.modeType = p.modeType;
+    if (p.modeType === 0) {
+      merged.atType = 0; // force to manual-off mode
+    } else if (p.modeType === 1) {
+      merged.atType = 1; // manual-on
+    }
   }
-  // When turning OFF (modeType=0) we leave onSpead alone — turning
-  // off shouldn't rewrite the "when on, run at speed N" preference.
+  // When turning OFF we leave onSpead alone — toggling off should
+  // not rewrite the "when on, run at speed N" preference.
   if (p.speak != null && p.modeType !== 0) {
     merged.onSpead = p.speak;
   }
 
-  // Whitelist of fields the AC-Infinity /api/dev/addDevMode validator
-  // actually accepts. The GET response includes ~120 fields but most
-  // are read-only metadata or firmware internals — echoing them back
-  // triggers error 100001 "parameter error". This list follows the
-  // HomeAssistant community integration's known-settable set, plus
-  // the UIS-Pro additions (activeTypeV2, onlyUpdateSpeed, settingMode,
-  // externalPort). Extend it as new fields prove settable.
-  const ALLOWED_WRITE_KEYS = new Set<string>([
-    // identifiers
-    "modeSetid",
-    "devId",
-    "port",
-    "externalPort",
-    // mode + base speeds
-    "modeType",
-    "atType",
-    "onSpead",
-    "offSpead",
-    "onlyUpdateSpeed",
-    // timer / cycle
-    "activeTimerOn",
-    "activeTimerOff",
-    "activeCycleOn",
-    "activeCycleOff",
-    // schedule (note AC Infinity's "Endt" typo in the field name)
-    "schedStartTime",
-    "schedEndtTime",
-    // humidity triggers
-    "devHs",
-    "devHl",
-    "devHhSpead",
-    "devHlSpead",
-    "humidityHighEnable",
-    "humidityLowEnable",
-    "autoHumidityHigh",
-    "autoHumidityLow",
-    "autoHumidityHighTrigger",
-    "autoHumidityLowTrigger",
-    // temperature triggers
-    "devTh",
-    "devTl",
-    "devThSpead",
-    "devTlSpead",
-    "tempHighEnable",
-    "tempLowEnable",
-    "autoTempHigh",
-    "autoTempLow",
-    "autoTempHighTrigger",
-    "autoTempLowTrigger",
-    "tempUnit",
-    // vpd triggers
-    "devVpdHigh",
-    "devVpdLow",
-    "devVpdHighSpead",
-    "devVpdLowSpead",
-    "vpdHighEnable",
-    "vpdLowEnable",
-    "vpdHighTrigger",
-    "vpdLowTrigger",
-    "vpdSettingMode",
-    "vpdTargetHigh",
-    "vpdTargetLow",
-    // co2 triggers
-    "devCh",
-    "devCl",
-    "devChSpead",
-    "devClSpead",
-    "co2HighEnable",
-    "co2LowEnable",
-    "co2HighTrigger",
-    "co2LowTrigger",
-    "co2TargetHigh",
-    "co2TargetLow",
-    "co2SettingMode",
-    // targets (shared)
-    "targetTSwitch",
-    "targetHumiSwitch",
-    "targetVpdSwitch",
-    "targetTemp",
-    "targetHumi",
-    "targetVpd",
-    // buffer / transition (Puffer/Übergang in the AC app)
-    "fitMode",
-    "tempFitValue",
-    "humFitValue",
-    "vpdFitValue",
-    "tempSurplus",
-    "humSurplus",
-    "vpdSurplus",
-    "surplus",
-    // runtime caps (Min/Max EIN-Dauer)
-    "atMin",
-    "atMax",
-    // trend compare
+  // Known read-only fields that come back in the GET response but
+  // must not be echoed back on write — these trigger error 100001
+  // "parameter error" from AC Infinity's validator.
+  const DROP_ON_WRITE = new Set<string>([
+    // state & diagnostics
+    "abnormalState",
+    "errorState",
+    "connectionState",
+    "fitState",
+    // timestamps that are not schedule-relevant
+    "createTime",
+    "updateTime",
+    "endTime",
+    "startTime",
+    // hardware identity
+    "devMacAddr",
+    "ipAddr",
+    "rssi",
+    "serial",
+    "devCode",
+    "devType",
+    // firmware
+    "hardwareVersion",
+    "softwareVersion",
+    "firmwareVersion",
+    // sharing / UI flags
+    "isShared",
+    "isAccept",
+    "isDisTempPicker",
+    "isDisHumidPicker",
+    "generalText",
+    "customText",
+    // live sensor values that mirror elsewhere — safe to omit on write
+    "hTrend",
+    "tTrend",
+    "vpdTrend",
+    "co2Trend",
     "trend",
-    // UIS Pro additions
-    "activeTypeV2",
-    "settingMode",
-    "triggerMode",
-    // misc small flags that look settable
-    "masterPort",
-    "nextTime",
   ]);
 
-  // Flatten the merged object into form-encoded body. Only known-good
-  // keys. Convert booleans → 1/0 (AC Infinity rejects "true"/"false"
-  // strings). Skip nulls to avoid clearing fields.
+  // Flatten the merged record into a form-encoded body. Only drop
+  // nested objects/arrays, booleans → 1/0, nulls skipped so we don't
+  // clear schedule times with empty strings.
   const writeBody = new URLSearchParams();
   for (const [k, v] of Object.entries(merged)) {
-    if (!ALLOWED_WRITE_KEYS.has(k)) continue;
+    if (DROP_ON_WRITE.has(k)) continue;
     if (v == null) continue;
     if (typeof v === "object") continue;
     if (typeof v === "boolean") {
@@ -227,7 +177,8 @@ export default async function handler(req: Request): Promise<Response> {
       writeBody.set(k, String(v));
     }
   }
-  // Hard-set the identifiers so we never miss them.
+  // Hard-set the identifiers so we never miss them (externalPort is
+  // the UIS-Pro key, port is the legacy key — belt-and-braces).
   if (!writeBody.has("devId")) writeBody.set("devId", p.devId);
   if (!writeBody.has("externalPort")) writeBody.set("externalPort", String(p.port));
   if (!writeBody.has("port")) writeBody.set("port", String(p.port));
