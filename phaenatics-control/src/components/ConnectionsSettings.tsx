@@ -285,7 +285,7 @@ function ModeBadge({
   mode,
   status,
 }: {
-  mode: "sim" | "acinfinity" | "homeassistant" | "tapo" | "mixed";
+  mode: "sim" | "acinfinity" | "homeassistant" | "tapo" | "tuya" | "mixed";
   status: "idle" | "polling" | "error";
 }) {
   const label =

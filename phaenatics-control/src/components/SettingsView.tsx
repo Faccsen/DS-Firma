@@ -6,6 +6,7 @@ import { AcInfinityOverview } from "./AcInfinityOverview";
 import { HomeAssistantSettings } from "./HomeAssistantSettings";
 import { HomeAssistantOverview } from "./HomeAssistantOverview";
 import { TapoIntegration } from "./TapoIntegration";
+import { TuyaIntegration } from "./TuyaIntegration";
 import { useStore } from "../lib/store";
 
 interface Toggle {
@@ -22,17 +23,23 @@ export function SettingsView() {
   const hasAc = !!connection.ac;
   const hasHa = !!connection.ha;
   const hasTapo = !!connection.tapo;
-  const activeCount = (hasAc ? 1 : 0) + (hasHa ? 1 : 0) + (hasTapo ? 1 : 0);
+  const hasTuya = !!connection.tuya;
+  const activeCount =
+    (hasAc ? 1 : 0) + (hasHa ? 1 : 0) + (hasTapo ? 1 : 0) + (hasTuya ? 1 : 0);
   const modeLabel =
     activeCount > 1
-      ? `Mixed (${[hasAc && "AC", hasHa && "HA", hasTapo && "Tapo"].filter(Boolean).join(" + ")})`
+      ? `Mixed (${[hasAc && "AC", hasHa && "HA", hasTapo && "Tapo", hasTuya && "SmartLife"]
+          .filter(Boolean)
+          .join(" + ")})`
       : hasAc
         ? "AC Infinity Live"
         : hasHa
           ? "Home Assistant Live"
           : hasTapo
             ? "Tapo Live"
-            : "Sim Mode";
+            : hasTuya
+              ? "SmartLife Live"
+              : "Sim Mode";
   const [toggles, setToggles] = useState<Toggle[]>([
     {
       key: "wifi",
@@ -85,6 +92,8 @@ export function SettingsView() {
       <HomeAssistantSettings />
 
       <TapoIntegration />
+
+      <TuyaIntegration />
 
       {hasAc && <AcInfinityOverview />}
 

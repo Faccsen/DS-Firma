@@ -22,10 +22,12 @@ export default function App() {
   const hasAc = useStore((s) => !!s.connection.ac);
   const hasHa = useStore((s) => !!s.connection.ha?.verified);
   const hasTapo = useStore((s) => !!s.connection.tapo);
+  const hasTuya = useStore((s) => !!s.connection.tuya);
   const pollingSec = useStore((s) => s.connection.pollingSec);
   const pollAcInfinity = useStore((s) => s.pollAcInfinity);
   const pollHomeAssistant = useStore((s) => s.pollHomeAssistant);
   const pollTapo = useStore((s) => s.pollTapo);
+  const pollTuya = useStore((s) => s.pollTuya);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
   const activeAlerts = alerts.filter((a) => !a.endedAt).length;
 
@@ -57,6 +59,14 @@ export default function App() {
     const id = setInterval(pollTapo, Math.max(10, pollingSec) * 1000);
     return () => clearInterval(id);
   }, [hasTapo, pollingSec, pollTapo]);
+
+  // Live polling of Tuya OpenAPI (SmartLife) when connected
+  useEffect(() => {
+    if (!hasTuya) return;
+    pollTuya();
+    const id = setInterval(pollTuya, Math.max(10, pollingSec) * 1000);
+    return () => clearInterval(id);
+  }, [hasTuya, pollingSec, pollTuya]);
 
   const titles: Record<View, string> = {
     dashboard: "Übersicht",
