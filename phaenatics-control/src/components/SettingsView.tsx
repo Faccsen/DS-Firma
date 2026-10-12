@@ -3,8 +3,6 @@ import { Bluetooth, Wifi, Bell, Thermometer } from "lucide-react";
 import { PhaenaticsSeal } from "./Brand";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { AcInfinityOverview } from "./AcInfinityOverview";
-import { HomeAssistantSettings } from "./HomeAssistantSettings";
-import { HomeAssistantOverview } from "./HomeAssistantOverview";
 import { TapoIntegration } from "./TapoIntegration";
 import { TuyaIntegration } from "./TuyaIntegration";
 import { useStore } from "../lib/store";
@@ -21,25 +19,21 @@ export function SettingsView() {
   const rooms = useStore((s) => s.rooms);
   const connection = useStore((s) => s.connection);
   const hasAc = !!connection.ac;
-  const hasHa = !!connection.ha;
   const hasTapo = !!connection.tapo;
   const hasTuya = !!connection.tuya;
-  const activeCount =
-    (hasAc ? 1 : 0) + (hasHa ? 1 : 0) + (hasTapo ? 1 : 0) + (hasTuya ? 1 : 0);
+  const activeCount = (hasAc ? 1 : 0) + (hasTapo ? 1 : 0) + (hasTuya ? 1 : 0);
   const modeLabel =
     activeCount > 1
-      ? `Mixed (${[hasAc && "AC", hasHa && "HA", hasTapo && "Tapo", hasTuya && "SmartLife"]
+      ? `Mixed (${[hasAc && "AC", hasTapo && "Tapo", hasTuya && "SmartLife"]
           .filter(Boolean)
           .join(" + ")})`
       : hasAc
         ? "AC Infinity Live"
-        : hasHa
-          ? "Home Assistant Live"
-          : hasTapo
-            ? "Tapo Live"
-            : hasTuya
-              ? "SmartLife Live"
-              : "Sim Mode";
+        : hasTapo
+          ? "Tapo Live"
+          : hasTuya
+            ? "SmartLife Live"
+            : "Sim Mode";
   const [toggles, setToggles] = useState<Toggle[]>([
     {
       key: "wifi",
@@ -89,15 +83,11 @@ export function SettingsView() {
 
       <ConnectionsSettings />
 
-      <HomeAssistantSettings />
-
       <TapoIntegration />
 
       <TuyaIntegration />
 
       {hasAc && <AcInfinityOverview />}
-
-      {hasHa && <HomeAssistantOverview />}
 
       <div className="card divide-y divide-line">
         {toggles.map((t) => {

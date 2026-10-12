@@ -14,7 +14,6 @@ import { defaultLightConfig, SCENE_PRESETS } from "../lib/light";
 
 const HOURS = 24;
 const STEP_MS = 15 * 60 * 1000;
-const DAY_MS = 86_400_000;
 
 function buildHistory(baseTemp: number, baseHum: number): HistoryPoint[] {
   const out: HistoryPoint[] = [];
@@ -263,52 +262,11 @@ export function createRoom(opts: {
   return room;
 }
 
-function flowerRoom(
-  name: string,
-  day: number,
-  kind: "standard" | "phenohunt" = "standard",
-): GrowRoom {
-  const r = createRoom({ name, kind, stage: "flowering" });
-  r.day = day;
-  r.plantedAt = Date.now() - (day - 1) * DAY_MS;
-  return r;
-}
-
-export const seedRooms: GrowRoom[] = [
-  {
-    ...createRoom({ name: "Veg Tent · 120×120", kind: "standard", stage: "vegetative" }),
-    day: 18,
-    plantedAt: Date.now() - 17 * DAY_MS,
-  },
-  flowerRoom("Bloom 1 · 120×120", 56),
-  flowerRoom("Bloom 2 · 120×120", 49),
-  flowerRoom("Bloom 3 · 120×120", 42),
-  flowerRoom("Bloom 4 · 120×120", 35),
-  flowerRoom("Bloom 5 · 120×120", 28),
-  flowerRoom("Bloom 6 · 120×120", 21),
-  flowerRoom("Bloom 7 · 120×120", 14),
-  flowerRoom("Bloom 8 · 120×120", 7),
-  flowerRoom("Pheno Hunt · 100×100", 32, "phenohunt"),
-  {
-    ...createRoom({ name: "Crop Steering · Rockwool", kind: "cropsteering", stage: "flowering" }),
-    day: 24,
-    plantedAt: Date.now() - 23 * DAY_MS,
-  },
-  {
-    ...createRoom({ name: "Dry Room", kind: "standard", stage: "drying" }),
-    day: 4,
-    temp: 19.4,
-    humidity: 58,
-    vpd: vpd(19.4, 58),
-    co2: 540,
-    lightOn: false,
-    targets: {
-      temp: { min: 18, max: 21 },
-      humidity: { min: 55, max: 62 },
-      vpd: vpdBand("drying"),
-    },
-  },
-];
+// Keine fiktiven Räume mehr — die App startet leer, der Nutzer legt
+// seine echten Zonen an bzw. importiert sie aus AC Infinity / Tapo /
+// SmartLife. So gibt es auch keine simulierten „Alarme" mehr für Räume,
+// die es gar nicht gibt.
+export const seedRooms: GrowRoom[] = [];
 
 export function strategyPreset(s: SteeringStrategy): Partial<CropSteering> {
   if (s === "vegetative") {

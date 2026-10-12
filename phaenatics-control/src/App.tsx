@@ -20,12 +20,10 @@ export default function App() {
   const alerts = useStore((s) => s.alerts);
   const activeRoomId = useStore((s) => s.activeRoomId);
   const hasAc = useStore((s) => !!s.connection.ac);
-  const hasHa = useStore((s) => !!s.connection.ha?.verified);
   const hasTapo = useStore((s) => !!s.connection.tapo);
   const hasTuya = useStore((s) => !!s.connection.tuya);
   const pollingSec = useStore((s) => s.connection.pollingSec);
   const pollAcInfinity = useStore((s) => s.pollAcInfinity);
-  const pollHomeAssistant = useStore((s) => s.pollHomeAssistant);
   const pollTapo = useStore((s) => s.pollTapo);
   const pollTuya = useStore((s) => s.pollTuya);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
@@ -43,14 +41,6 @@ export default function App() {
     const id = setInterval(pollAcInfinity, Math.max(10, pollingSec) * 1000);
     return () => clearInterval(id);
   }, [hasAc, pollingSec, pollAcInfinity]);
-
-  // Live polling of Home Assistant when connected
-  useEffect(() => {
-    if (!hasHa) return;
-    pollHomeAssistant();
-    const id = setInterval(pollHomeAssistant, Math.max(10, pollingSec) * 1000);
-    return () => clearInterval(id);
-  }, [hasHa, pollingSec, pollHomeAssistant]);
 
   // Live polling of Tapo cloud when connected
   useEffect(() => {
