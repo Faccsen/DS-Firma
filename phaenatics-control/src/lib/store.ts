@@ -32,6 +32,15 @@ import {
   portDeviceKind,
   parseSensors,
 } from "./acinfinity";
+import {
+  type HaEntityState,
+  haEntityKind,
+  haListStates,
+  haPing,
+  haStateNumber,
+  haStateOn,
+  haWriteDevice,
+} from "./homeassistant";
 import { defaultLightConfig } from "./light";
 
 interface State {
@@ -49,6 +58,11 @@ interface State {
   setConnection: (patch: Partial<ConnectionConfig>) => void;
   disconnectAcInfinity: () => void;
   pollAcInfinity: () => Promise<void>;
+
+  connectHomeAssistant: (baseUrl: string, token: string) => Promise<void>;
+  disconnectHomeAssistant: () => void;
+  pollHomeAssistant: () => Promise<void>;
+  importHaEntity: (entity: HaEntityState, roomId?: string) => string;
 
   selectRoom: (id: string) => void;
   setTick: (on: boolean) => void;
@@ -460,9 +474,163 @@ export const useStore = create<State>((set, get) => ({
       return { connection, connectionStatus: "idle", connectionError: undefined };
     }),
 
+  connectHomeAssistant: async (baseUrl, token) => {
+    const url = baseUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+    try {
+      const { version } = await haPing(url, token);
+      const connection = {
+        ...get().connection,
+        ha: { baseUrl: url, token, verified: true, version, connectedAt: Date.now() },
+      };
+      persistConnection(connection);
+      set({ connection, connectionStatus: "idle", connectionError: undefined });
+    } catch (e) {
+      set({ connectionError: `HA-Login fehlgeschlagen: ${String(e)}` });
+      throw e;
+    }
+  },
+
+  disconnectHomeAssistant: () =>
+    set((s) => {
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        ha: undefined,
+        // Entferne HA-Pairings
+        pairings: s.connection.pairings.filter((p) => p.source !== "ha"),
+        roomSensors: s.connection.roomSensors.filter((rs) => rs.source !== "ha"),
+      };
+      persistConnection(connection);
+      return { connection, connectionStatus: "idle", connectionError: undefined };
+    }),
+
+  pollHomeAssistant: async () => {
+    const { connection, rooms } = get();
+    if (!connection.ha) return;
+    set({ connectionStatus: "polling" });
+    try {
+      const states = await haListStates(connection.ha.baseUrl, connection.ha.token);
+      const byId = new Map(states.map((s) => [s.entity_id, s]));
+
+      const updated = rooms.map((r) => {
+        let next = r;
+        const haSensors = connection.roomSensors.find(
+          (rs) => rs.source === "ha" && rs.roomId === r.id,
+        );
+        if (haSensors) {
+          const t = haStateNumber(byId.get(haSensors.haTempEntity ?? ""));
+          const h = haStateNumber(byId.get(haSensors.haHumidityEntity ?? ""));
+          const v = haStateNumber(byId.get(haSensors.haVpdEntity ?? ""));
+          const c = haStateNumber(byId.get(haSensors.haCo2Entity ?? ""));
+          next = {
+            ...next,
+            temp: t ?? next.temp,
+            humidity: h ?? next.humidity,
+            vpd: v ?? next.vpd,
+            co2: c ?? next.co2,
+          };
+        }
+        const haDevicePairings = connection.pairings.filter(
+          (p) => p.source === "ha" && p.roomId === r.id,
+        );
+        if (haDevicePairings.length) {
+          next = {
+            ...next,
+            devices: next.devices.map((d) => {
+              const pair = haDevicePairings.find((p) => p.appDeviceId === d.id);
+              if (!pair?.haEntityId) return d;
+              const state = byId.get(pair.haEntityId);
+              if (!state) return d;
+              const brightness = state.attributes.brightness;
+              const percentage = state.attributes.percentage;
+              const level =
+                typeof brightness === "number"
+                  ? Math.round((brightness / 255) * 100)
+                  : typeof percentage === "number"
+                    ? percentage
+                    : d.level;
+              return { ...d, on: haStateOn(state), level };
+            }),
+          };
+        }
+        return next;
+      });
+      persist(updated);
+      set({
+        rooms: updated,
+        connectionStatus: "idle",
+        connectionError: undefined,
+        lastPollAt: Date.now(),
+      });
+    } catch (e) {
+      set({ connectionStatus: "error", connectionError: `HA: ${String(e)}` });
+    }
+  },
+
+  importHaEntity: (entity, maybeRoomId) => {
+    const roomId =
+      maybeRoomId ??
+      get().addRoom({
+        name: entity.attributes.friendly_name ?? entity.entity_id,
+        kind: "standard",
+        stage: "flowering",
+      });
+
+    const kind = haEntityKind(entity);
+    const deviceId = `d-${Math.random().toString(36).slice(2, 8)}`;
+    const brightness = entity.attributes.brightness;
+    const percentage = entity.attributes.percentage;
+    const level =
+      typeof brightness === "number"
+        ? Math.round((brightness / 255) * 100)
+        : typeof percentage === "number"
+          ? percentage
+          : 50;
+
+    set((s) => {
+      const rooms = s.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        const device: Device = {
+          id: deviceId,
+          type: kind,
+          name: entity.attributes.friendly_name ?? entity.entity_id,
+          port: r.devices.length + 1,
+          on: haStateOn(entity),
+          level,
+          mode: "manual",
+        };
+        return { ...r, devices: [...r.devices, device] };
+      });
+
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        pairings: [
+          ...s.connection.pairings,
+          {
+            source: "ha",
+            appDeviceId: deviceId,
+            roomId,
+            haEntityId: entity.entity_id,
+          },
+        ],
+      };
+      persist(rooms);
+      persistConnection(connection);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Home-Assistant-Entität übernommen", {
+          roomName: rooms.find((r) => r.id === roomId)?.name,
+          details: entity.entity_id,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, connection, audit };
+    });
+    return deviceId;
+  },
+
   pollAcInfinity: async () => {
     const { connection, rooms } = get();
-    if (connection.mode !== "acinfinity" || !connection.ac) return;
+    if (!connection.ac) return;
     set({ connectionStatus: "polling" });
     try {
       const controllers = await acListDevices(connection.ac.userId, connection.ac.token);
@@ -478,11 +646,13 @@ export const useStore = create<State>((set, get) => ({
           });
         }
       }
-      // Apply to paired rooms + devices
+      // Apply to paired rooms + devices (AC Infinity source only)
       const updated = rooms.map((r) => {
         let next = r;
-        const sensorPair = connection.roomSensors.find((rs) => rs.roomId === r.id);
-        if (sensorPair) {
+        const sensorPair = connection.roomSensors.find(
+          (rs) => rs.source === "acinfinity" && rs.roomId === r.id,
+        );
+        if (sensorPair?.acDevId) {
           const ctrl = controllers.find((c) => c.devId === sensorPair.acDevId);
           if (ctrl) {
             const s = parseSensors(ctrl.deviceInfo);
@@ -495,13 +665,15 @@ export const useStore = create<State>((set, get) => ({
             };
           }
         }
-        const roomPairings = connection.pairings.filter((p) => p.roomId === r.id);
+        const roomPairings = connection.pairings.filter(
+          (p) => p.source === "acinfinity" && p.roomId === r.id,
+        );
         if (roomPairings.length) {
           next = {
             ...next,
             devices: next.devices.map((d) => {
               const pair = roomPairings.find((p) => p.appDeviceId === d.id);
-              if (!pair) return d;
+              if (!pair?.acDevId || pair.acPort == null) return d;
               const live = portMap.get(`${pair.acDevId}:${pair.acPort}`);
               if (!live) return d;
               return {
@@ -634,22 +806,31 @@ export const useStore = create<State>((set, get) => ({
         }),
       );
       persistAudit(audit);
-      // Forward to AC Infinity if the device is paired. Surface failures.
+      // Forward to the paired backend (AC Infinity or Home Assistant)
       const pair = s.connection.pairings.find((p) => p.appDeviceId === deviceId);
-      if (pair && s.connection.ac) {
+      const newOn = !dev?.on;
+      if (pair?.source === "acinfinity" && s.connection.ac && pair.acDevId && pair.acPort != null) {
         acSetPort({
           userId: s.connection.ac.userId,
           token: s.connection.ac.token,
           devId: pair.acDevId,
           port: pair.acPort,
-          modeType: dev?.on ? 0 : 1, // flipped sense (0=off, 1=on)
+          modeType: newOn ? 1 : 0,
           speak: dev?.level,
         })
           .then(() => useStore.setState({ connectionError: undefined }))
           .catch((e) =>
             useStore.setState({
-              connectionError: `Hardware-Schreib-Fehler (toggle): ${String(e)}`,
+              connectionError: `AC Infinity (toggle): ${String(e)}`,
             }),
+          );
+      } else if (pair?.source === "ha" && s.connection.ha && pair.haEntityId) {
+        haWriteDevice(s.connection.ha.baseUrl, s.connection.ha.token, pair.haEntityId, {
+          on: newOn,
+        })
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({ connectionError: `Home Assistant (toggle): ${String(e)}` }),
           );
       }
       persistAudit(audit);
@@ -681,7 +862,7 @@ export const useStore = create<State>((set, get) => ({
       );
       persistAudit(audit);
       const pair = s.connection.pairings.find((p) => p.appDeviceId === deviceId);
-      if (pair && s.connection.ac) {
+      if (pair?.source === "acinfinity" && s.connection.ac && pair.acDevId && pair.acPort != null) {
         acSetPort({
           userId: s.connection.ac.userId,
           token: s.connection.ac.token,
@@ -693,8 +874,16 @@ export const useStore = create<State>((set, get) => ({
           .then(() => useStore.setState({ connectionError: undefined }))
           .catch((e) =>
             useStore.setState({
-              connectionError: `Hardware-Schreib-Fehler (level): ${String(e)}`,
+              connectionError: `AC Infinity (level): ${String(e)}`,
             }),
+          );
+      } else if (pair?.source === "ha" && s.connection.ha && pair.haEntityId) {
+        haWriteDevice(s.connection.ha.baseUrl, s.connection.ha.token, pair.haEntityId, {
+          level,
+        })
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({ connectionError: `Home Assistant (level): ${String(e)}` }),
           );
       }
       return { rooms, audit };
@@ -1088,7 +1277,7 @@ export const useStore = create<State>((set, get) => ({
       const now = Date.now();
       const newPairings = [...s.connection.pairings];
       const newRoomSensors = s.connection.roomSensors.filter((rs) => rs.roomId !== roomId);
-      newRoomSensors.push({ roomId, acDevId: ctrl.devId });
+      newRoomSensors.push({ source: "acinfinity", roomId, acDevId: ctrl.devId });
 
       const rooms = s.rooms.map((r) => {
         if (r.id !== roomId) return r;
@@ -1122,6 +1311,7 @@ export const useStore = create<State>((set, get) => ({
               : {}),
           };
           newPairings.push({
+            source: "acinfinity",
             appDeviceId: id,
             acDevId: ctrl.devId,
             acPort: p.port,
@@ -1163,14 +1353,11 @@ export const useStore = create<State>((set, get) => ({
   tick: () =>
     set((s) => {
       if (!s.tickEnabled) return s;
-      // Rooms whose sensors are backed by a live AC Infinity controller
-      // should NOT drift via the simulator — we still push a history point
-      // (from current live values) and run rules, but skip applyDeviceEffects.
-      const liveRoomIds = new Set(
-        s.connection.mode === "acinfinity"
-          ? s.connection.roomSensors.map((rs) => rs.roomId)
-          : [],
-      );
+      // Rooms whose sensors are backed by live AC Infinity OR Home Assistant
+      // readings should NOT drift via the simulator. We still push a history
+      // point (from current live values) and run rules, but skip
+      // applyDeviceEffects for those rooms.
+      const liveRoomIds = new Set(s.connection.roomSensors.map((rs) => rs.roomId));
       const rooms = s.rooms.map((r) => {
         let next = liveRoomIds.has(r.id) ? r : applyDeviceEffects(r);
         next = applyRules(next);

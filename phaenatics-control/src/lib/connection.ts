@@ -1,7 +1,9 @@
-// Device-pairing state: which app Device ID corresponds to which AC Infinity
-// controller + port. Persisted alongside the credentials in localStorage.
-// Credentials are kept client-side only; they travel to our serverless
-// proxy on each request and never to any third-party service.
+// Device-pairing state. Each pairing carries a `source` so the store can
+// route reads and writes to the right backend. AC Infinity and Home
+// Assistant can be active at the same time — the user picks per device /
+// per room which backend to use. Credentials never leave this device.
+
+export type ConnectionSource = "acinfinity" | "ha";
 
 export interface AcCredentials {
   email: string;
@@ -11,42 +13,89 @@ export interface AcCredentials {
   connectedAt: number;
 }
 
+export interface HaCredentials {
+  /** Full Home Assistant URL incl. protocol, e.g. "https://ha.phaenatics.de" */
+  baseUrl: string;
+  /** Long-Lived Access Token from HA Profile → Security */
+  token: string;
+  verified?: boolean;
+  version?: string;
+  connectedAt: number;
+}
+
 export interface DevicePairing {
+  source: ConnectionSource;
   /** Phaenatics app Device.id */
   appDeviceId: string;
-  /** AC Infinity controller devId */
-  acDevId: string;
-  /** AC Infinity port number on that controller */
-  acPort: number;
-  /** Phaenatics app Room.id — denormalised for faster look-up */
+  /** Phaenatics Room.id — denormalised for faster look-up */
   roomId: string;
+  // AC Infinity target
+  acDevId?: string;
+  acPort?: number;
+  // Home Assistant target
+  haEntityId?: string;
 }
 
 export interface RoomSensorPairing {
+  source: ConnectionSource;
   /** Phaenatics Room.id */
   roomId: string;
-  /** AC Infinity controller devId — temp/rF/VPD/CO₂ from this controller feed the room */
-  acDevId: string;
+  // AC Infinity: single controller supplies all 4 sensors
+  acDevId?: string;
+  // Home Assistant: one HA entity per sensor
+  haTempEntity?: string;
+  haHumidityEntity?: string;
+  haVpdEntity?: string;
+  haCo2Entity?: string;
 }
 
 export interface ConnectionConfig {
-  mode: "sim" | "acinfinity";
+  /** Primary mode shown in UI chips. "mixed" when both backends are set up. */
+  mode: "sim" | "acinfinity" | "homeassistant" | "mixed";
   ac?: AcCredentials;
+  ha?: HaCredentials;
   pairings: DevicePairing[];
   roomSensors: RoomSensorPairing[];
   pollingSec: number;
 }
 
-const KEY = "phaenatics-connection-v1";
+const KEY = "phaenatics-connection-v2";
 
 export function loadConnection(): ConnectionConfig {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return defaultConnection();
+    if (!raw) {
+      // Migrate from v1 if present
+      const v1 = localStorage.getItem("phaenatics-connection-v1");
+      if (v1) {
+        try {
+          const old = JSON.parse(v1) as {
+            mode?: string;
+            ac?: AcCredentials;
+            pairings?: Array<Record<string, unknown>>;
+            roomSensors?: Array<Record<string, unknown>>;
+            pollingSec?: number;
+          };
+          return {
+            mode: (old.mode === "acinfinity" ? "acinfinity" : "sim") as ConnectionConfig["mode"],
+            ac: old.ac,
+            pairings: (old.pairings ?? []).map((p) => ({ source: "acinfinity", ...(p as object) }) as DevicePairing),
+            roomSensors: (old.roomSensors ?? []).map(
+              (s) => ({ source: "acinfinity", ...(s as object) }) as RoomSensorPairing,
+            ),
+            pollingSec: old.pollingSec ?? 30,
+          };
+        } catch {
+          /* fall through */
+        }
+      }
+      return defaultConnection();
+    }
     const parsed = JSON.parse(raw) as ConnectionConfig;
     return {
       mode: parsed.mode ?? "sim",
       ac: parsed.ac,
+      ha: parsed.ha,
       pairings: parsed.pairings ?? [],
       roomSensors: parsed.roomSensors ?? [],
       pollingSec: parsed.pollingSec ?? 30,
@@ -66,4 +115,14 @@ export function persistConnection(cfg: ConnectionConfig) {
 
 export function defaultConnection(): ConnectionConfig {
   return { mode: "sim", pairings: [], roomSensors: [], pollingSec: 30 };
+}
+
+/** Derive the effective mode label from which backends are set up. */
+export function effectiveMode(cfg: ConnectionConfig): ConnectionConfig["mode"] {
+  const hasAc = !!cfg.ac;
+  const hasHa = !!cfg.ha;
+  if (hasAc && hasHa) return "mixed";
+  if (hasAc) return "acinfinity";
+  if (hasHa) return "homeassistant";
+  return "sim";
 }
