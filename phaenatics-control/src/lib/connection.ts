@@ -3,7 +3,7 @@
 // Assistant can be active at the same time — the user picks per device /
 // per room which backend to use. Credentials never leave this device.
 
-export type ConnectionSource = "acinfinity" | "ha";
+export type ConnectionSource = "acinfinity" | "ha" | "tapo";
 
 export interface AcCredentials {
   email: string;
@@ -23,6 +23,13 @@ export interface HaCredentials {
   connectedAt: number;
 }
 
+export interface TapoCredentials {
+  email: string;
+  token: string;
+  accountId: string;
+  connectedAt: number;
+}
+
 export interface DevicePairing {
   source: ConnectionSource;
   /** Phaenatics app Device.id */
@@ -34,6 +41,9 @@ export interface DevicePairing {
   acPort?: number;
   // Home Assistant target
   haEntityId?: string;
+  // TP-Link Tapo target
+  tapoDeviceId?: string;
+  tapoAppServerUrl?: string;
 }
 
 export interface RoomSensorPairing {
@@ -50,10 +60,11 @@ export interface RoomSensorPairing {
 }
 
 export interface ConnectionConfig {
-  /** Primary mode shown in UI chips. "mixed" when both backends are set up. */
-  mode: "sim" | "acinfinity" | "homeassistant" | "mixed";
+  /** Primary mode shown in UI chips. "mixed" when ≥2 backends are set up. */
+  mode: "sim" | "acinfinity" | "homeassistant" | "tapo" | "mixed";
   ac?: AcCredentials;
   ha?: HaCredentials;
+  tapo?: TapoCredentials;
   pairings: DevicePairing[];
   roomSensors: RoomSensorPairing[];
   pollingSec: number;
@@ -96,6 +107,7 @@ export function loadConnection(): ConnectionConfig {
       mode: parsed.mode ?? "sim",
       ac: parsed.ac,
       ha: parsed.ha,
+      tapo: parsed.tapo,
       pairings: parsed.pairings ?? [],
       roomSensors: parsed.roomSensors ?? [],
       pollingSec: parsed.pollingSec ?? 30,
@@ -119,10 +131,10 @@ export function defaultConnection(): ConnectionConfig {
 
 /** Derive the effective mode label from which backends are set up. */
 export function effectiveMode(cfg: ConnectionConfig): ConnectionConfig["mode"] {
-  const hasAc = !!cfg.ac;
-  const hasHa = !!cfg.ha;
-  if (hasAc && hasHa) return "mixed";
-  if (hasAc) return "acinfinity";
-  if (hasHa) return "homeassistant";
+  const count = (cfg.ac ? 1 : 0) + (cfg.ha ? 1 : 0) + (cfg.tapo ? 1 : 0);
+  if (count > 1) return "mixed";
+  if (cfg.ac) return "acinfinity";
+  if (cfg.ha) return "homeassistant";
+  if (cfg.tapo) return "tapo";
   return "sim";
 }

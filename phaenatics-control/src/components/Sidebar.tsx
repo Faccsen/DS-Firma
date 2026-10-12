@@ -109,7 +109,7 @@ export function Sidebar({ view, onView }: Props) {
             key={r.id}
             onClick={() => {
               selectRoom(r.id);
-              if (view === "dashboard") onView("room");
+              onView("room");
             }}
             className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
               activeRoomId === r.id

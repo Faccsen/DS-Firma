@@ -41,6 +41,16 @@ import {
   haStateOn,
   haWriteDevice,
 } from "./homeassistant";
+import {
+  type TapoDevice,
+  tapoAlias,
+  tapoDeviceKind,
+  tapoGetStatus,
+  tapoListDevices,
+  tapoLogin,
+  tapoSetBrightness,
+  tapoSetRelay,
+} from "./tapo";
 import { defaultLightConfig } from "./light";
 
 interface State {
@@ -63,6 +73,11 @@ interface State {
   disconnectHomeAssistant: () => void;
   pollHomeAssistant: () => Promise<void>;
   importHaEntity: (entity: HaEntityState, roomId?: string) => string;
+
+  connectTapo: (email: string, password: string) => Promise<void>;
+  disconnectTapo: () => void;
+  pollTapo: () => Promise<void>;
+  importTapoDevice: (dev: TapoDevice, roomId?: string) => string;
 
   selectRoom: (id: string) => void;
   setTick: (on: boolean) => void;
@@ -628,6 +643,146 @@ export const useStore = create<State>((set, get) => ({
     return deviceId;
   },
 
+  connectTapo: async (email, password) => {
+    try {
+      const r = await tapoLogin(email, password);
+      const connection = {
+        ...get().connection,
+        tapo: {
+          email,
+          token: r.token,
+          accountId: r.accountId,
+          connectedAt: Date.now(),
+        },
+      };
+      persistConnection(connection);
+      set({ connection, connectionStatus: "idle", connectionError: undefined });
+    } catch (e) {
+      set({ connectionError: `Tapo-Login: ${String(e)}` });
+      throw e;
+    }
+  },
+
+  disconnectTapo: () =>
+    set((s) => {
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        tapo: undefined,
+        pairings: s.connection.pairings.filter((p) => p.source !== "tapo"),
+        roomSensors: s.connection.roomSensors.filter((rs) => rs.source !== "tapo"),
+      };
+      persistConnection(connection);
+      return { connection, connectionStatus: "idle", connectionError: undefined };
+    }),
+
+  pollTapo: async () => {
+    const { connection, rooms } = get();
+    if (!connection.tapo) return;
+    set({ connectionStatus: "polling" });
+    try {
+      const devices = await tapoListDevices(connection.tapo.token);
+      const byId = new Map(devices.map((d) => [d.deviceId, d]));
+
+      // For each paired Tapo device, fetch current state (relay + energy).
+      // We skip offline devices to avoid pointless errors.
+      const statuses = new Map<string, { on?: boolean; brightness?: number }>();
+      await Promise.all(
+        connection.pairings
+          .filter((p) => p.source === "tapo" && p.tapoDeviceId)
+          .map(async (p) => {
+            const dev = byId.get(p.tapoDeviceId!);
+            if (!dev || dev.status !== 1) return;
+            try {
+              const st = await tapoGetStatus(connection.tapo!.token, dev);
+              statuses.set(p.tapoDeviceId!, { on: st.on, brightness: st.brightness });
+            } catch {
+              /* leave previous state */
+            }
+          }),
+      );
+
+      const updated = rooms.map((r) => {
+        const roomPairs = connection.pairings.filter(
+          (p) => p.source === "tapo" && p.roomId === r.id,
+        );
+        if (!roomPairs.length) return r;
+        return {
+          ...r,
+          devices: r.devices.map((d) => {
+            const pair = roomPairs.find((p) => p.appDeviceId === d.id);
+            if (!pair?.tapoDeviceId) return d;
+            const st = statuses.get(pair.tapoDeviceId);
+            if (!st) return d;
+            return {
+              ...d,
+              on: st.on ?? d.on,
+              level: st.brightness ?? d.level,
+            };
+          }),
+        };
+      });
+      persist(updated);
+      set({
+        rooms: updated,
+        connectionStatus: "idle",
+        connectionError: undefined,
+        lastPollAt: Date.now(),
+      });
+    } catch (e) {
+      set({ connectionStatus: "error", connectionError: `Tapo: ${String(e)}` });
+    }
+  },
+
+  importTapoDevice: (dev, maybeRoomId) => {
+    const alias = tapoAlias(dev);
+    const roomId =
+      maybeRoomId ??
+      get().addRoom({ name: alias, kind: "standard", stage: "flowering" });
+    const kind = tapoDeviceKind(dev);
+    const deviceId = `d-${Math.random().toString(36).slice(2, 8)}`;
+
+    set((s) => {
+      const rooms = s.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        const device: Device = {
+          id: deviceId,
+          type: kind,
+          name: alias,
+          port: r.devices.length + 1,
+          on: dev.status === 1,
+          level: kind === "light" ? 80 : 100,
+          mode: "manual",
+        };
+        return { ...r, devices: [...r.devices, device] };
+      });
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        pairings: [
+          ...s.connection.pairings,
+          {
+            source: "tapo",
+            appDeviceId: deviceId,
+            roomId,
+            tapoDeviceId: dev.deviceId,
+            tapoAppServerUrl: dev.appServerUrl,
+          },
+        ],
+      };
+      persist(rooms);
+      persistConnection(connection);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Tapo-Steckdose übernommen", {
+          roomName: rooms.find((r) => r.id === roomId)?.name,
+          details: `${alias} · ${dev.deviceModel}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, connection, audit };
+    });
+    return deviceId;
+  },
+
   pollAcInfinity: async () => {
     const { connection, rooms } = get();
     if (!connection.ac) return;
@@ -832,6 +987,19 @@ export const useStore = create<State>((set, get) => ({
           .catch((e) =>
             useStore.setState({ connectionError: `Home Assistant (toggle): ${String(e)}` }),
           );
+      } else if (pair?.source === "tapo" && s.connection.tapo && pair.tapoDeviceId) {
+        tapoSetRelay(
+          s.connection.tapo.token,
+          {
+            deviceId: pair.tapoDeviceId,
+            appServerUrl: pair.tapoAppServerUrl ?? "",
+          } as TapoDevice,
+          newOn,
+        )
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({ connectionError: `Tapo (toggle): ${String(e)}` }),
+          );
       }
       persistAudit(audit);
       return { rooms, audit };
@@ -884,6 +1052,23 @@ export const useStore = create<State>((set, get) => ({
           .then(() => useStore.setState({ connectionError: undefined }))
           .catch((e) =>
             useStore.setState({ connectionError: `Home Assistant (level): ${String(e)}` }),
+          );
+      } else if (pair?.source === "tapo" && s.connection.tapo && pair.tapoDeviceId) {
+        // Tapo plugs are relay-only, Tapo bulbs support brightness.
+        // Figure out which from the Phaenatics device type.
+        const type = (dev?.type ?? "fan") as string;
+        const tapoDev = {
+          deviceId: pair.tapoDeviceId,
+          appServerUrl: pair.tapoAppServerUrl ?? "",
+        } as TapoDevice;
+        const call =
+          type === "light"
+            ? tapoSetBrightness(s.connection.tapo.token, tapoDev, level)
+            : tapoSetRelay(s.connection.tapo.token, tapoDev, level > 0);
+        call
+          .then(() => useStore.setState({ connectionError: undefined }))
+          .catch((e) =>
+            useStore.setState({ connectionError: `Tapo (level): ${String(e)}` }),
           );
       }
       return { rooms, audit };

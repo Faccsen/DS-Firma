@@ -22,9 +22,11 @@ export default function App() {
   const activeRoomId = useStore((s) => s.activeRoomId);
   const hasAc = useStore((s) => !!s.connection.ac);
   const hasHa = useStore((s) => !!s.connection.ha?.verified);
+  const hasTapo = useStore((s) => !!s.connection.tapo);
   const pollingSec = useStore((s) => s.connection.pollingSec);
   const pollAcInfinity = useStore((s) => s.pollAcInfinity);
   const pollHomeAssistant = useStore((s) => s.pollHomeAssistant);
+  const pollTapo = useStore((s) => s.pollTapo);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
   const activeAlerts = alerts.filter((a) => !a.endedAt).length;
 
@@ -48,6 +50,14 @@ export default function App() {
     const id = setInterval(pollHomeAssistant, Math.max(10, pollingSec) * 1000);
     return () => clearInterval(id);
   }, [hasHa, pollingSec, pollHomeAssistant]);
+
+  // Live polling of Tapo cloud when connected
+  useEffect(() => {
+    if (!hasTapo) return;
+    pollTapo();
+    const id = setInterval(pollTapo, Math.max(10, pollingSec) * 1000);
+    return () => clearInterval(id);
+  }, [hasTapo, pollingSec, pollTapo]);
 
   const titles: Record<View, string> = {
     dashboard: "Übersicht",

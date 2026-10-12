@@ -5,6 +5,7 @@ import { ConnectionsSettings } from "./ConnectionsSettings";
 import { AcInfinityOverview } from "./AcInfinityOverview";
 import { HomeAssistantSettings } from "./HomeAssistantSettings";
 import { HomeAssistantOverview } from "./HomeAssistantOverview";
+import { TapoIntegration } from "./TapoIntegration";
 import { useStore } from "../lib/store";
 
 interface Toggle {
@@ -20,13 +21,18 @@ export function SettingsView() {
   const connection = useStore((s) => s.connection);
   const hasAc = !!connection.ac;
   const hasHa = !!connection.ha;
-  const modeLabel = hasAc && hasHa
-    ? "Mixed (AC + HA)"
-    : hasAc
-      ? "AC Infinity Live"
-      : hasHa
-        ? "Home Assistant Live"
-        : "Sim Mode";
+  const hasTapo = !!connection.tapo;
+  const activeCount = (hasAc ? 1 : 0) + (hasHa ? 1 : 0) + (hasTapo ? 1 : 0);
+  const modeLabel =
+    activeCount > 1
+      ? `Mixed (${[hasAc && "AC", hasHa && "HA", hasTapo && "Tapo"].filter(Boolean).join(" + ")})`
+      : hasAc
+        ? "AC Infinity Live"
+        : hasHa
+          ? "Home Assistant Live"
+          : hasTapo
+            ? "Tapo Live"
+            : "Sim Mode";
   const [toggles, setToggles] = useState<Toggle[]>([
     {
       key: "wifi",
@@ -77,6 +83,8 @@ export function SettingsView() {
       <ConnectionsSettings />
 
       <HomeAssistantSettings />
+
+      <TapoIntegration />
 
       {hasAc && <AcInfinityOverview />}
 
