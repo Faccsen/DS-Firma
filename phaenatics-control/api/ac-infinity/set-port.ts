@@ -95,59 +95,141 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // 2. Merge the user's requested changes onto the current record.
-  //    AC Infinity uses `onSpead` (sic — misspelling preserved from
-  //    their API) for the "manual on" speed. The port-list `speak`
-  //    we received is just the live mirror of that same field — do
-  //    NOT also send `speak` as an extra field here, AC Infinity's
-  //    newer validator rejects unknown keys with "Something wrong
-  //    with your request. Please try again later."
+  //    AC Infinity uses `onSpead` (sic — their misspelling of "on
+  //    speed") for the manual-on target. The port-list `speak` is
+  //    just the live mirror of the same field — do NOT send it as an
+  //    extra key.
   const merged: Record<string, unknown> = { ...current };
   if (p.modeType != null) {
     merged.modeType = p.modeType;
   }
-  if (p.speak != null) {
+  // When turning OFF (modeType=0) we leave onSpead alone — turning
+  // off shouldn't rewrite the "when on, run at speed N" preference.
+  if (p.speak != null && p.modeType !== 0) {
     merged.onSpead = p.speak;
   }
 
-  // Known read-only fields that come back in the GET response but
-  // must not be echoed back on write (observed to trigger validator
-  // rejections). Based on the HA community integration and empirical
-  // testing — extend this set when we identify more.
-  const DROP_ON_WRITE = new Set<string>([
-    "createTime",
-    "updateTime",
-    "devMacAddr",
-    "ipAddr",
-    "devType",
-    "hardwareVersion",
-    "softwareVersion",
-    "generalText",
-    "customText",
-    "isShared",
-    "isAccept",
-    "isDisTempPicker",
-    "isDisHumidPicker",
-    "serial",
-    "ecProblem",
+  // Whitelist of fields the AC-Infinity /api/dev/addDevMode validator
+  // actually accepts. The GET response includes ~120 fields but most
+  // are read-only metadata or firmware internals — echoing them back
+  // triggers error 100001 "parameter error". This list follows the
+  // HomeAssistant community integration's known-settable set, plus
+  // the UIS-Pro additions (activeTypeV2, onlyUpdateSpeed, settingMode,
+  // externalPort). Extend it as new fields prove settable.
+  const ALLOWED_WRITE_KEYS = new Set<string>([
+    // identifiers
+    "modeSetid",
+    "devId",
+    "port",
+    "externalPort",
+    // mode + base speeds
+    "modeType",
+    "atType",
+    "onSpead",
+    "offSpead",
+    "onlyUpdateSpeed",
+    // timer / cycle
+    "activeTimerOn",
+    "activeTimerOff",
+    "activeCycleOn",
+    "activeCycleOff",
+    // schedule (note AC Infinity's "Endt" typo in the field name)
+    "schedStartTime",
+    "schedEndtTime",
+    // humidity triggers
+    "devHs",
+    "devHl",
+    "devHhSpead",
+    "devHlSpead",
+    "humidityHighEnable",
+    "humidityLowEnable",
+    "autoHumidityHigh",
+    "autoHumidityLow",
+    "autoHumidityHighTrigger",
+    "autoHumidityLowTrigger",
+    // temperature triggers
+    "devTh",
+    "devTl",
+    "devThSpead",
+    "devTlSpead",
+    "tempHighEnable",
+    "tempLowEnable",
+    "autoTempHigh",
+    "autoTempLow",
+    "autoTempHighTrigger",
+    "autoTempLowTrigger",
+    "tempUnit",
+    // vpd triggers
+    "devVpdHigh",
+    "devVpdLow",
+    "devVpdHighSpead",
+    "devVpdLowSpead",
+    "vpdHighEnable",
+    "vpdLowEnable",
+    "vpdHighTrigger",
+    "vpdLowTrigger",
+    "vpdSettingMode",
+    "vpdTargetHigh",
+    "vpdTargetLow",
+    // co2 triggers
+    "devCh",
+    "devCl",
+    "devChSpead",
+    "devClSpead",
+    "co2HighEnable",
+    "co2LowEnable",
+    "co2HighTrigger",
+    "co2LowTrigger",
+    "co2TargetHigh",
+    "co2TargetLow",
+    "co2SettingMode",
+    // targets (shared)
+    "targetTSwitch",
+    "targetHumiSwitch",
+    "targetVpdSwitch",
+    "targetTemp",
+    "targetHumi",
+    "targetVpd",
+    // buffer / transition (Puffer/Übergang in the AC app)
+    "fitMode",
+    "tempFitValue",
+    "humFitValue",
+    "vpdFitValue",
+    "tempSurplus",
+    "humSurplus",
+    "vpdSurplus",
+    "surplus",
+    // runtime caps (Min/Max EIN-Dauer)
+    "atMin",
+    "atMax",
+    // trend compare
+    "trend",
+    // UIS Pro additions
+    "activeTypeV2",
+    "settingMode",
+    "triggerMode",
+    // misc small flags that look settable
+    "masterPort",
+    "nextTime",
   ]);
 
-  // Flatten the merged object into form-encoded body. Convert booleans
-  // to 1/0 (AC Infinity backend sees "true"/"false" strings as invalid).
-  // Skip nulls because empty strings would clear fields (e.g. wipe
-  // schedule times).
+  // Flatten the merged object into form-encoded body. Only known-good
+  // keys. Convert booleans → 1/0 (AC Infinity rejects "true"/"false"
+  // strings). Skip nulls to avoid clearing fields.
   const writeBody = new URLSearchParams();
   for (const [k, v] of Object.entries(merged)) {
+    if (!ALLOWED_WRITE_KEYS.has(k)) continue;
     if (v == null) continue;
-    if (DROP_ON_WRITE.has(k)) continue;
-    if (typeof v === "object") continue; // nested arrays go via other endpoints
+    if (typeof v === "object") continue;
     if (typeof v === "boolean") {
       writeBody.set(k, v ? "1" : "0");
     } else {
       writeBody.set(k, String(v));
     }
   }
-  // Just in case these weren't in the GET response (rare on old firmware):
+  // Hard-set the identifiers so we never miss them.
   if (!writeBody.has("devId")) writeBody.set("devId", p.devId);
+  if (!writeBody.has("externalPort")) writeBody.set("externalPort", String(p.port));
   if (!writeBody.has("port")) writeBody.set("port", String(p.port));
 
   // 3. Push the merged record back.
