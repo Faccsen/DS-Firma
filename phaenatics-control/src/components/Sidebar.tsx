@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   LayoutDashboard,
   Cpu,
-  Bell,
   BarChart3,
   Settings,
   Activity,
@@ -22,7 +21,6 @@ type View =
   | "room"
   | "lights"
   | "alerts"
-  | "automation"
   | "history"
   | "settings";
 
@@ -45,7 +43,6 @@ export function Sidebar({ view, onView }: Props) {
     { id: "room", label: "Geräte", icon: Cpu },
     { id: "lights", label: "Lampen", icon: Lightbulb },
     { id: "alerts", label: "Alarme", icon: AlertTriangle, badge: activeAlerts },
-    { id: "automation", label: "Automation", icon: Bell },
     { id: "history", label: "Verlauf", icon: BarChart3 },
     { id: "settings", label: "Einstellungen", icon: Settings },
   ] as const;
