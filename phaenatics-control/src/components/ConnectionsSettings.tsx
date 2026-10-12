@@ -285,7 +285,7 @@ function ModeBadge({
   mode,
   status,
 }: {
-  mode: "sim" | "acinfinity";
+  mode: "sim" | "acinfinity" | "homeassistant" | "mixed";
   status: "idle" | "polling" | "error";
 }) {
   const label =

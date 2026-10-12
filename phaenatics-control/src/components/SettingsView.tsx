@@ -3,6 +3,8 @@ import { Bluetooth, Wifi, Bell, Thermometer } from "lucide-react";
 import { PhaenaticsSeal } from "./Brand";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { AcInfinityOverview } from "./AcInfinityOverview";
+import { HomeAssistantSettings } from "./HomeAssistantSettings";
+import { HomeAssistantOverview } from "./HomeAssistantOverview";
 import { useStore } from "../lib/store";
 
 interface Toggle {
@@ -15,7 +17,16 @@ interface Toggle {
 
 export function SettingsView() {
   const rooms = useStore((s) => s.rooms);
-  const mode = useStore((s) => s.connection.mode);
+  const connection = useStore((s) => s.connection);
+  const hasAc = !!connection.ac;
+  const hasHa = !!connection.ha;
+  const modeLabel = hasAc && hasHa
+    ? "Mixed (AC + HA)"
+    : hasAc
+      ? "AC Infinity Live"
+      : hasHa
+        ? "Home Assistant Live"
+        : "Sim Mode";
   const [toggles, setToggles] = useState<Toggle[]>([
     {
       key: "wifi",
@@ -58,15 +69,18 @@ export function SettingsView() {
         <div>
           <h2 className="display text-3xl text-cream leading-none">Phaenatics Control</h2>
           <p className="text-[12px] text-muted mt-1.5">
-            v0.2.0 · {mode === "acinfinity" ? "AC Infinity Live" : "Sim Mode"} ·{" "}
-            {rooms.length} Räume · Cannabis Social Club Lüneburg
+            v0.3.0 · {modeLabel} · {rooms.length} Räume · Cannabis Social Club Lüneburg
           </p>
         </div>
       </div>
 
       <ConnectionsSettings />
 
-      {mode === "acinfinity" && <AcInfinityOverview />}
+      <HomeAssistantSettings />
+
+      {hasAc && <AcInfinityOverview />}
+
+      {hasHa && <HomeAssistantOverview />}
 
       <div className="card divide-y divide-line">
         {toggles.map((t) => {

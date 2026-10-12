@@ -20,9 +20,11 @@ export default function App() {
   const rooms = useStore((s) => s.rooms);
   const alerts = useStore((s) => s.alerts);
   const activeRoomId = useStore((s) => s.activeRoomId);
-  const connectionMode = useStore((s) => s.connection.mode);
+  const hasAc = useStore((s) => !!s.connection.ac);
+  const hasHa = useStore((s) => !!s.connection.ha?.verified);
   const pollingSec = useStore((s) => s.connection.pollingSec);
   const pollAcInfinity = useStore((s) => s.pollAcInfinity);
+  const pollHomeAssistant = useStore((s) => s.pollHomeAssistant);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
   const activeAlerts = alerts.filter((a) => !a.endedAt).length;
 
@@ -33,11 +35,19 @@ export default function App() {
 
   // Live polling of AC Infinity cloud when connected
   useEffect(() => {
-    if (connectionMode !== "acinfinity") return;
+    if (!hasAc) return;
     pollAcInfinity();
     const id = setInterval(pollAcInfinity, Math.max(10, pollingSec) * 1000);
     return () => clearInterval(id);
-  }, [connectionMode, pollingSec, pollAcInfinity]);
+  }, [hasAc, pollingSec, pollAcInfinity]);
+
+  // Live polling of Home Assistant when connected
+  useEffect(() => {
+    if (!hasHa) return;
+    pollHomeAssistant();
+    const id = setInterval(pollHomeAssistant, Math.max(10, pollingSec) * 1000);
+    return () => clearInterval(id);
+  }, [hasHa, pollingSec, pollHomeAssistant]);
 
   const titles: Record<View, string> = {
     dashboard: "Übersicht",

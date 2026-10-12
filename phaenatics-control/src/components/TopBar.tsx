@@ -4,9 +4,12 @@ import { useStore } from "../lib/store";
 export function TopBar({ title, subtitle }: { title: string; subtitle?: string }) {
   const tickEnabled = useStore((s) => s.tickEnabled);
   const setTick = useStore((s) => s.setTick);
-  const connectionMode = useStore((s) => s.connection.mode);
+  const hasAc = useStore((s) => !!s.connection.ac);
+  const hasHa = useStore((s) => !!s.connection.ha);
   const connectionError = useStore((s) => s.connectionError);
   const connectionStatus = useStore((s) => s.connectionStatus);
+  const connectionMode: "sim" | "acinfinity" | "homeassistant" | "mixed" =
+    hasAc && hasHa ? "mixed" : hasAc ? "acinfinity" : hasHa ? "homeassistant" : "sim";
 
   return (
     <>
@@ -16,7 +19,11 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
           {subtitle && <div className="text-[11px] text-muted truncate">{subtitle}</div>}
         </div>
         <div className="flex items-center gap-2">
-          {connectionMode === "acinfinity" ? (
+          {connectionMode === "sim" ? (
+            <span className="pill">
+              <Wifi className="size-3" /> Sim
+            </span>
+          ) : (
             <span
               className={`pill ${
                 connectionStatus === "error"
@@ -25,14 +32,24 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
                     ? "text-info border-info/30 bg-info/10"
                     : "text-leaf border-leaf/30 bg-leaf/10"
               }`}
-              title="AC Infinity Cloud"
+              title={
+                connectionMode === "mixed"
+                  ? "AC Infinity + Home Assistant"
+                  : connectionMode === "acinfinity"
+                    ? "AC Infinity Cloud"
+                    : "Home Assistant"
+              }
             >
               <Cloud className="size-3" />
-              {connectionStatus === "error" ? "Fehler" : connectionStatus === "polling" ? "Sync" : "Live"}
-            </span>
-          ) : (
-            <span className="pill">
-              <Wifi className="size-3" /> Sim
+              {connectionStatus === "error"
+                ? "Fehler"
+                : connectionStatus === "polling"
+                  ? "Sync"
+                  : connectionMode === "mixed"
+                    ? "AC+HA"
+                    : connectionMode === "homeassistant"
+                      ? "HA"
+                      : "AC"}
             </span>
           )}
           <button

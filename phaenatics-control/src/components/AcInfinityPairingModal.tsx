@@ -43,7 +43,7 @@ export function AcInfinityPairingModal({ onClose }: Props) {
 
   function setSensorPairing(roomId: string, acDevId: string | "") {
     const next = connection.roomSensors.filter((rs) => rs.roomId !== roomId);
-    if (acDevId) next.push({ roomId, acDevId });
+    if (acDevId) next.push({ source: "acinfinity", roomId, acDevId });
     setConnection({ roomSensors: next });
   }
 
@@ -51,7 +51,7 @@ export function AcInfinityPairingModal({ onClose }: Props) {
     const next = connection.pairings.filter((p) => p.appDeviceId !== appDeviceId);
     if (token) {
       const [acDevId, portStr] = token.split("::");
-      next.push({ appDeviceId, roomId, acDevId, acPort: Number(portStr) });
+      next.push({ source: "acinfinity", appDeviceId, roomId, acDevId, acPort: Number(portStr) });
     }
     setConnection({ pairings: next });
   }
