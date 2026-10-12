@@ -97,25 +97,54 @@ export default async function handler(req: Request): Promise<Response> {
   // 2. Merge the user's requested changes onto the current record.
   //    AC Infinity uses `onSpead` (sic — misspelling preserved from
   //    their API) for the "manual on" speed. The port-list `speak`
-  //    we received is just the live mirror of that same field.
+  //    we received is just the live mirror of that same field — do
+  //    NOT also send `speak` as an extra field here, AC Infinity's
+  //    newer validator rejects unknown keys with "Something wrong
+  //    with your request. Please try again later."
   const merged: Record<string, unknown> = { ...current };
   if (p.modeType != null) {
     merged.modeType = p.modeType;
   }
   if (p.speak != null) {
     merged.onSpead = p.speak;
-    // Some firmwares also look at `speak` directly on write; set both.
-    merged.speak = p.speak;
   }
 
-  // Flatten the merged object into form-encoded body. Skip nulls because
-  // the AC Infinity backend treats empty strings as "clear this field"
-  // which can wipe schedules.
+  // Known read-only fields that come back in the GET response but
+  // must not be echoed back on write (observed to trigger validator
+  // rejections). Based on the HA community integration and empirical
+  // testing — extend this set when we identify more.
+  const DROP_ON_WRITE = new Set<string>([
+    "createTime",
+    "updateTime",
+    "devMacAddr",
+    "ipAddr",
+    "devType",
+    "hardwareVersion",
+    "softwareVersion",
+    "generalText",
+    "customText",
+    "isShared",
+    "isAccept",
+    "isDisTempPicker",
+    "isDisHumidPicker",
+    "serial",
+    "ecProblem",
+  ]);
+
+  // Flatten the merged object into form-encoded body. Convert booleans
+  // to 1/0 (AC Infinity backend sees "true"/"false" strings as invalid).
+  // Skip nulls because empty strings would clear fields (e.g. wipe
+  // schedule times).
   const writeBody = new URLSearchParams();
   for (const [k, v] of Object.entries(merged)) {
     if (v == null) continue;
-    if (typeof v === "object") continue; // nested arrays are set via other endpoints
-    writeBody.set(k, String(v));
+    if (DROP_ON_WRITE.has(k)) continue;
+    if (typeof v === "object") continue; // nested arrays go via other endpoints
+    if (typeof v === "boolean") {
+      writeBody.set(k, v ? "1" : "0");
+    } else {
+      writeBody.set(k, String(v));
+    }
   }
   // Just in case these weren't in the GET response (rare on old firmware):
   if (!writeBody.has("devId")) writeBody.set("devId", p.devId);
@@ -138,7 +167,12 @@ export default async function handler(req: Request): Promise<Response> {
             error: "write-settings-failed",
             code: parsed.code,
             msg: parsed.msg ?? "AC Infinity rejected the write",
-            sentFields: Object.keys(merged),
+            sentFields: Array.from(writeBody.keys()),
+            attempted: {
+              modeType: p.modeType,
+              speak: p.speak,
+            },
+            rawFirstBytes: text.slice(0, 400),
           },
           parsed.code === 10000 ? 401 : 502,
         );
