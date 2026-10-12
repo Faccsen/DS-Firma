@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Thermometer, Droplets, Wind, Sparkles, Settings2 } from "lucide-react";
+import { Thermometer, Droplets, Wind, Sparkles, Settings2, Plus } from "lucide-react";
 import { useStore } from "../lib/store";
 import { DeviceControl } from "./DeviceControl";
 import { SensorTile } from "./SensorTile";
@@ -10,6 +10,7 @@ import { RoomJournal } from "./RoomJournal";
 import { RoomMetaEditor } from "./RoomMetaEditor";
 import { CombinedChart } from "./CombinedChart";
 import { EditRoomModal } from "./EditRoomModal";
+import { AddDeviceModal } from "./AddDeviceModal";
 import { stageLabel, stageColor, kindLabel, kindColor } from "../lib/labels";
 
 export function RoomDetail() {
@@ -17,6 +18,7 @@ export function RoomDetail() {
   const activeRoomId = useStore((s) => s.activeRoomId);
   const room = rooms.find((r) => r.id === activeRoomId) ?? rooms[0];
   const [editOpen, setEditOpen] = useState(false);
+  const [addDeviceOpen, setAddDeviceOpen] = useState(false);
 
   if (!room) {
     return (
@@ -106,13 +108,35 @@ export function RoomDetail() {
       </section>
 
       <section>
-        <h3 className="display text-xl text-cream mb-3">Geräte</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {room.devices.map((d) => (
-            <DeviceControl key={d.id} roomId={room.id} device={d} />
-          ))}
+        <div className="flex items-end justify-between mb-3 gap-3">
+          <h3 className="display text-xl text-cream">Geräte</h3>
+          <button
+            onClick={() => setAddDeviceOpen(true)}
+            className="btn btn-primary"
+          >
+            <Plus className="size-4" />
+            Gerät hinzufügen
+          </button>
         </div>
+        {room.devices.length === 0 ? (
+          <div className="card p-6 text-center text-sm text-muted">
+            Noch keine Geräte in diesem Raum. Tippe oben rechts auf{" "}
+            <span className="text-cream">„Gerät hinzufügen"</span>, um
+            AC-Infinity-Ports, Tapo- oder SmartLife-Geräte zu scannen oder
+            ein manuelles Platzhalter-Gerät anzulegen.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {room.devices.map((d) => (
+              <DeviceControl key={d.id} roomId={room.id} device={d} />
+            ))}
+          </div>
+        )}
       </section>
+
+      {addDeviceOpen && (
+        <AddDeviceModal roomId={room.id} onClose={() => setAddDeviceOpen(false)} />
+      )}
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <RoomMetaEditor room={room} />

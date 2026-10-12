@@ -11,6 +11,7 @@ import {
   Droplet,
   FlaskConical,
   Settings2,
+  Trash2,
 } from "lucide-react";
 import type { Device, DeviceMode } from "../lib/types";
 import { useStore } from "../lib/store";
@@ -63,11 +64,23 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
   const toggle = useStore((s) => s.toggleDevice);
   const setLevel = useStore((s) => s.setDeviceLevel);
   const setMode = useStore((s) => s.setDeviceMode);
+  const removeDevice = useStore((s) => s.removeDevice);
   const paired = useStore((s) =>
-    s.connection.mode === "acinfinity" &&
     s.connection.pairings.some((p) => p.appDeviceId === device.id),
   );
   const [modal, setModal] = useState(false);
+
+  function confirmRemove() {
+    if (
+      window.confirm(
+        `„${device.name}" aus diesem Raum entfernen?${
+          paired ? "\n(Die Hardware-Verbindung wird dabei gelöst.)" : ""
+        }`,
+      )
+    ) {
+      removeDevice(roomId, device.id);
+    }
+  }
 
   const Icon = ICON[device.type];
   const max = LEVEL_MAX[device.type];
@@ -117,6 +130,14 @@ export function DeviceControl({ roomId, device }: { roomId: string; device: Devi
               <Settings2 className="size-4" />
             </button>
           )}
+          <button
+            onClick={confirmRemove}
+            className="size-10 rounded-xl grid place-items-center border bg-panel2 text-muted border-line hover:text-danger hover:border-danger/40"
+            aria-label="Gerät entfernen"
+            title="Gerät entfernen"
+          >
+            <Trash2 className="size-4" />
+          </button>
           <button
             onClick={() => toggle(roomId, device.id)}
             className={`size-10 rounded-xl grid place-items-center border transition-colors ${

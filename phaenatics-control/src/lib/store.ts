@@ -99,6 +99,20 @@ interface State {
   duplicateRoom: (id: string) => void;
   setRoomMeta: (id: string, patch: Partial<Pick<GrowRoom, "stage" | "day" | "plantedAt" | "harvestInDays">>) => void;
 
+  addManualDevice: (
+    roomId: string,
+    opts: { type: Device["type"]; name: string; wattage?: number },
+  ) => string;
+  addAcPortToRoom: (
+    roomId: string,
+    args: {
+      controller: AcController;
+      port: import("./acinfinity").AcPort;
+      useAsRoomSensor?: boolean;
+    },
+  ) => string;
+  removeDevice: (roomId: string, deviceId: string) => void;
+
   toggleDevice: (roomId: string, deviceId: string) => void;
   setDeviceLevel: (roomId: string, deviceId: string, level: number) => void;
   setDeviceMode: (roomId: string, deviceId: string, mode: Device["mode"]) => void;
@@ -148,6 +162,24 @@ const DAY_MS = 86_400_000;
 
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
+}
+
+function defaultNameFor(type: Device["type"]): string {
+  return (
+    {
+      fan: "Lüfter",
+      intake: "Zuluft",
+      exhaust: "Abluft",
+      light: "LED Panel",
+      humidifier: "Humidifier",
+      dehumidifier: "Dehumidifier",
+      heater: "Heizung",
+      ac: "Klimaanlage",
+      co2: "CO₂-Regler",
+      pump: "Pumpe",
+      doser: "Doser",
+    } as const
+  )[type];
 }
 
 function kindLabelDe(k: ReturnType<typeof portDeviceKind>): string {
@@ -965,6 +997,145 @@ export const useStore = create<State>((set, get) => ({
       );
       persistAudit(audit);
       return { rooms, audit };
+    }),
+
+  addManualDevice: (roomId, { type, name, wattage }) => {
+    const deviceId = `d-${Math.random().toString(36).slice(2, 8)}`;
+    set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      if (!room) return s;
+      const nextPort = (room.devices.reduce((m, d) => Math.max(m, d.port), 0) || 0) + 1;
+      const base: Device = {
+        id: deviceId,
+        type,
+        name: name.trim() || defaultNameFor(type),
+        port: nextPort,
+        on: false,
+        level: type === "fan" || type === "intake" || type === "exhaust" ? 4 : 50,
+        mode: "manual",
+      };
+      const device: Device =
+        type === "light"
+          ? {
+              ...base,
+              level: 90,
+              mode: "schedule",
+              scheduleOn: "08:00",
+              scheduleOff: "20:00",
+              lightConfig: defaultLightConfig("flower", wattage ?? 240),
+            }
+          : base;
+      const rooms = s.rooms.map((r) =>
+        r.id !== roomId ? r : { ...r, devices: [...r.devices, device] },
+      );
+      persist(rooms);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Gerät hinzugefügt (manuell)", {
+          roomName: room.name,
+          deviceName: device.name,
+          details: type,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, audit };
+    });
+    return deviceId;
+  },
+
+  addAcPortToRoom: (roomId, { controller, port, useAsRoomSensor }) => {
+    const deviceId = `d-${Math.random().toString(36).slice(2, 8)}`;
+    const kind = portDeviceKind({ loadType: port.loadType, portName: port.portName });
+    const name =
+      port.portName && port.portName.trim().length > 0
+        ? port.portName
+        : `${defaultNameFor(kind)} · Port ${port.port}`;
+    set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      if (!room) return s;
+      const device: Device = {
+        id: deviceId,
+        type: kind,
+        name,
+        port: port.port,
+        on: port.loadState === 1 || port.modeType !== 0,
+        level: port.speak ?? 0,
+        mode:
+          port.modeType === 2
+            ? "auto"
+            : port.modeType === 3
+              ? "schedule"
+              : port.modeType === 0
+                ? "off"
+                : "manual",
+        ...(kind === "light"
+          ? {
+              lightConfig: defaultLightConfig("flower", 240),
+              scheduleOn: "08:00",
+              scheduleOff: "20:00",
+            }
+          : {}),
+      };
+      const rooms = s.rooms.map((r) =>
+        r.id !== roomId ? r : { ...r, devices: [...r.devices, device] },
+      );
+
+      const pairings = [
+        ...s.connection.pairings.filter((p) => p.appDeviceId !== deviceId),
+        {
+          source: "acinfinity" as const,
+          appDeviceId: deviceId,
+          roomId,
+          acDevId: controller.devId,
+          acPort: port.port,
+        },
+      ];
+      let roomSensors = s.connection.roomSensors;
+      if (useAsRoomSensor) {
+        roomSensors = [
+          ...roomSensors.filter((rs) => rs.roomId !== roomId),
+          { source: "acinfinity", roomId, acDevId: controller.devId },
+        ];
+      }
+      const connection: ConnectionConfig = { ...s.connection, pairings, roomSensors };
+      persist(rooms);
+      persistConnection(connection);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "AC-Infinity-Port verbunden", {
+          roomName: room.name,
+          deviceName: name,
+          details: `${controller.devName || controller.devId} · Port ${port.port}`,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, connection, audit };
+    });
+    return deviceId;
+  },
+
+  removeDevice: (roomId, deviceId) =>
+    set((s) => {
+      const room = s.rooms.find((r) => r.id === roomId);
+      const dev = room?.devices.find((d) => d.id === deviceId);
+      const rooms = s.rooms.map((r) =>
+        r.id !== roomId ? r : { ...r, devices: r.devices.filter((d) => d.id !== deviceId) },
+      );
+      const connection: ConnectionConfig = {
+        ...s.connection,
+        pairings: s.connection.pairings.filter((p) => p.appDeviceId !== deviceId),
+      };
+      persist(rooms);
+      persistConnection(connection);
+      const audit = appendAudit(
+        s.audit,
+        auditEntry("device", "Gerät entfernt", {
+          roomName: room?.name,
+          deviceName: dev?.name,
+        }),
+      );
+      persistAudit(audit);
+      return { rooms, connection, audit };
     }),
 
   toggleDevice: (roomId, deviceId) =>
