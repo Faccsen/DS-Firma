@@ -3,7 +3,6 @@ import { Sidebar, type View } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { Dashboard } from "./components/Dashboard";
 import { RoomDetail } from "./components/RoomDetail";
-import { AutomationView } from "./components/AutomationView";
 import { HistoryView } from "./components/HistoryView";
 import { SettingsView } from "./components/SettingsView";
 import { LightsView } from "./components/LightsView";
@@ -65,7 +64,6 @@ export default function App() {
     room: room?.name ?? "Räume",
     lights: "Lampen",
     alerts: "Alarme",
-    automation: "Automation",
     history: "Verlauf",
     settings: "Einstellungen",
   };
@@ -76,7 +74,6 @@ export default function App() {
     room: "Geräte, Zielwerte & Journal",
     lights: "Alle Lampen aller Räume",
     alerts: `${activeAlerts} aktiv`,
-    automation: "Sensor-Regeln",
     history: "Was wurde wann geändert",
     settings: "App & Geräteoptionen",
   };
@@ -99,7 +96,6 @@ export default function App() {
           {view === "room" && <RoomDetail />}
           {view === "lights" && <LightsView />}
           {view === "alerts" && <AlertsView />}
-          {view === "automation" && <AutomationView />}
           {view === "history" && <HistoryView />}
           {view === "settings" && <SettingsView />}
         </div>
